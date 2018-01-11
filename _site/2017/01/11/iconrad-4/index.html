@@ -1,0 +1,256 @@
+<html>
+  <head>
+    <meta content='Configuring LDAP and StartTLS. - tminor.io' property='og:title' />
+    <title>Configuring LDAP and StartTLS. - tminor.io</title>
+    <link href='http://localhost:4000/images/fav.png' rel='shortcut icon'>
+<link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/style.css' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/syntax.css' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/responsive.css' rel='stylesheet' type='text/css' />
+<!-- - -->
+<script src='http://localhost:4000/javascripts/jquery.js' type='text/javascript'></script>
+<script src='http://localhost:4000/javascripts/pd.js' type='text/javascript'></script>
+<script src='http://localhost:4000/javascripts/basics.js' type='text/javascript'></script>
+<!--<script type="text/javascript" src="https://www.google.com/jsapi"></script>-->
+<!-- - -->
+<meta content='width=device-width, initial-scale=1.0, user-scalable=no' name='viewport'>
+<meta content='text/html; charset=utf-8' http-equiv='content-type' />
+<meta content="http://localhost:4000/og.png" property="og:image" />
+<meta content="" property="fb:app_id" />
+
+  <meta content='http://localhost:4000/2017/01/11/iconrad-4/' property='og:url' />
+  <meta content="IntroductionThis post serves as a point of demarcation between completed steps and steps in progress. If you&rsquo;re..." property='og:description' />
+  <meta content="article" property="og:type" />
+
+<!-- - -->
+<!--<script type='text/javascript'>
+  //<![CDATA[
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', '']);
+    _gaq.push(['_trackPageview']);
+    
+    (function() {
+      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+  //]]>
+</script>-->
+<script>(function(d, s, id) {
+  var js, fjs = d.getElementsByTagName(s)[0];
+  if (d.getElementById(id)) return;
+  js = d.createElement(s); js.id = id;
+  js.src = "//connect.facebook.net/en_GB/all.js#xfbml=1&appId=";
+  fjs.parentNode.insertBefore(js, fjs);
+}(document, 'script', 'facebook-jssdk'));</script>
+
+  </head>
+  <body>
+    <header>
+<a id="go-back-home" href="http://localhost:4000"><img src="http://localhost:4000/images/shebang.svg" alt="#!" width="53" height="59"></a>
+<p>tminor.io</p>
+</header>
+
+    <div id='container'>
+      <div class="block">
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/about">
+       About
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000https://blog.tminor.io">
+       Blog
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/feed.xml">
+       RSS
+     </a>
+  
+</div>
+      <section class="paging">
+  
+    <div class="left">
+      <a href="/2017/01/01/iconrad-3-project/">
+        ‹
+      </a>
+    </div>
+  
+  
+    <div class="right">
+      <a href="/2017/01/27/iconrad-5/">
+        ›
+      </a>
+    </div>
+  
+</section>
+      <div class="content">
+        <section class='post'>
+          <h1 class="upcase">
+            <div class='date'>11 Jan 2017</div>
+            Configuring LDAP and StartTLS.
+          </h1>
+          <h3>Introduction</h3>
+
+<p>This post serves as a point of demarcation between completed steps and steps in progress. If you&rsquo;re following along, installing OpenLDAP is step 4 as delineated <a href="https://www.reddit.com/r/linuxadmin/comments/2s924h/how_did_you_get_your_start/cnnw1ma/">here</a>. Everything up to this point was a challenge for me but certainly not insurmountbale. OpenLDAP, on the other hand, has been the most obtuse thing I&rsquo;ve tackled so far. With some time, however, I was able to establish some steps that produced reliable results while setting OpenLDAP. It should be mentioned that this process uses self-signed certificates.</p>
+
+<hr>
+
+<p>Starting with a fresh VM with a CentOS 6 minimal image, install all of the packages necessary for running OpenLDAP:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo yum install openldap-clients pam_ldap nss-pam-ldapd pam_krb5 sssd migrationtools openldap-servers openldap openldap-devel
+</code></pre></div>
+<p>Next, move <code>/etc/openldap/certs</code> and create a new certificate directory:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo mv /etc/openldap/certs{,_bak} &amp;&amp; sudo mkdir /etc/openldap/certs
+</code></pre></div>
+<p>This directory will serve as the <code>moznss</code> certificate database for OpenLDAP. <code>certutil</code> is used to manage this directory; its analogues would be <code>openssl</code> and GnuTLS tools such as <code>certtool</code>. <code>moznss</code>&lsquo;s effectiveness for OpenLDAP certificate management seems to be debatable. When browsing OpenLDAP lists while troubleshooting, I noticed many instances of OpenLDAP developers disparaging this method as buggy and inconsistent. Unfortunately for me, I decided to do it the Red Hat way and used the version available via Red Hat repositories. </p>
+
+<p>Prepare the directory for <code>certutil</code>:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ echo &quot;&lt;password&gt;&quot; &gt; password
+$ echo &quot;&lt;type randomly&gt;&quot; &gt;&gt; noise.txt
+</code></pre></div>
+<p>The database needs a password; this database stores private keys, so &ldquo;password&rdquo; is probably not the best choice. Move the password file to the <code>certs</code> directory and associate it with the database:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo mv password /etc/openldap/certs/
+$ sudo certutil -N -d /etc/openldap/certs -f /etc/openldap/certs/password
+</code></pre></div>
+<p>Generate a new key pair for the root certificate:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo certutil -G -d /etc/openldap/certs -z noise.txt -f /etc/openldap/certs/password
+</code></pre></div>
+<p>Generate the root certificate:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo certutil -S -n &quot;CA certificate&quot; -s &quot;cn=CAcert&quot; -x -t &quot;CT,,&quot; -m 1000 -v 120 -d /etc/openldap/certs -z noise.txt -f /etc/openldap/certs/password
+</code></pre></div>
+<p>Use the newly created root certificate to sign and generate a certificate for the LDAP server:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo certutil -S -n &quot;OpenLDAP Server&quot; -s &quot;cn=ldap1.example.com&quot; -c &quot;CA certificate&quot; -t &quot;u,u,u&quot; -m 1001 -v 120 -d /etc/openldap/certs -z noise.txt -f /etc/openldap/certs/password
+</code></pre></div>
+<p>Export the root certificate so that it can be used later:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo pk12util -d /etc/openldap/certs -o cacert.p12 -n &quot;CA certificate&quot;
+</code></pre></div>
+<p>Keep in mind that this is the root certificate; keep it secure and use a good password to encrypt it. Export the CA certificate for use by LDAP clients:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo certutil -L -d /etc/openldap/certs -n &quot;CA certificate&quot; -a &gt; cacert.pem
+$ sudo mkdir /etc/openldap/cacerts &amp;&amp; sudo cp /etc/openldap/certs/cacert.pem /etc/openldap/cacerts/
+</code></pre></div>
+<p>Make all files readable in the certificate database directory:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo chmod 644 /etc/openldap/certs/*
+</code></pre></div>
+<p>Enable <code>ldaps://</code> by editing <code>/etc/sysconfig/ldap</code> with your favorite text editor:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">&lt;snip&gt;
+SLAPD_LDAPS=yes
+&lt;/snip&gt;
+</code></pre></div>
+<p>Next, set up the LDAP database using the default configuration:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG
+$ sudo chown -Rf ldap:ldap /var/lib/ldap
+</code></pre></div>
+<p>With the basics now set up and configured, start the <code>slapd</code> service (OpenLDAP&rsquo;s daemon) and enable it on startup:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo service slapd start
+$ sudo chkconfig enable slapd
+</code></pre></div>
+<p>With server-side configuration complete, configure client settings by running <code>authconfig-tui</code>. (The documentation for <code>authconfig-tui</code> reports that it is deprecated):</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">[*] Use LDAP
+[*] Use LDAP Authentication
+&lt;Next&gt;
+[*] Use TLS
+Server: ldap://ldapserver.localdomain/
+Base DN: dc=localdomain,dc=com
+</code></pre></div>
+<p>Be sure to alter the above to reflect the actual domain name and domain components (dc=).</p>
+
+<p>OpenLDAP uses a client configuration file, <code>/etc/openldap/ldap.conf</code>. The default configuration file may work, however it may be necessary to add an additional configuration parameter (<code>TLS_REQCERT</code>) to enable StartTLS using a self-signed cert. Open up the client config file and append the following:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">TLS_REQCERT allow
+</code></pre></div>
+<p>Now the server is ready to be tested. First, try an unencrypted search:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ ldapsearch -H ldap:// -x -s base -b &quot;&quot; -LLL &quot;configContext&quot;
+</code></pre></div>
+<p>If successful, expect the following:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">dn:
+configContext: cn=config
+</code></pre></div>
+<p>Once it&rsquo;s verified that unencrypted searches are functioning properly, append the <code>-ZZ</code> option, forcing StartTLS. If the search fails, expect an error; if this is the case, append <code>-d -1</code> for debug output. In some cases, I found it necessary to regenerate the certs and cert database. </p>
+
+<hr>
+
+<h3>Conclusion</h3>
+
+<p>The next post will cover setting up N-Way Multimaster replication.</p>
+
+          <!--
+<br />
+<p>
+  Until next time,<br/>
+  Thomas
+  <span class="muted">at 22:45</span>
+</p>
+<p>
+  <img src="/images/blog.svg" alt="./blog.sh" width="70" height="40" /> 
+</p>
+-->
+
+
+        </section>
+      </div>
+      
+
+      
+        <div class="block">
+  <div id="disqus_thread"></div>
+    <script>
+      /**
+      *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+      *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+      */
+      /*
+      var disqus_config = function () {
+        this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+      };
+      */
+      (function() {  // DON'T EDIT BELOW THIS LINE
+        var d = document, s = d.createElement('script');
+
+        s.src = '//blog-tminor-io.disqus.com/embed.js';
+
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+      })();
+    </script>
+  <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+</div>
+
+      
+      <div class="block">
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/about">
+       About
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000https://blog.tminor.io">
+       Blog
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/feed.xml">
+       RSS
+     </a>
+  
+</div>
+    </div>
+    <!--
+<footer>
+  <a href="http://github.com/muan/scribble" class="muted">built with Jekyll using Scribble theme</a>
+  <br />
+  <br />
+  <img src="http://localhost:4000/images/eof.svg" alt="./blog.sh" width="40" height="27"/> 
+</footer>
+-->
+
+  </body>
+</html>

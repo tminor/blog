@@ -1,0 +1,228 @@
+<h3 id="introduction">Introduction</h3>
+
+<p>In the last post, we covered how to set up basic LDAP hosts with StartTLS enabled. We’ll continue to configure our LDAP setup to enable replication between two hosts. This can be achieved through a variety of methods, but each works towards the same end result: redundancy. OpenLDAP replicates per directory information tree or DIT fragment. Each host uses a replication engine called <code class="highlighter-rouge">syncrepl</code> (short for Sync Replication). In this tutorial, we’ll configure two hosts to function both as providers and consumers. OpenLDAP refers to this configuration as N-Way Multimaster Replication.</p>
+
+<h3 id="openldap-trials-and-tribulations">OpenLDAP trials and tribulations</h3>
+
+<p>So far we’ve managed to avoid configuring our OpenLDAP server directly. To recap, we’ve only directly interacted with our server by starting it and performing a search against it.</p>
+
+<p>When I first installed OpenLDAP, I (naively) expected the configuration process to take place via editing static configuration files with a text editor. Confusion mounted as I browsed the official documentation and its “Quick-Start Guide”:</p>
+
+<blockquote>
+  <ol>
+    <li>
+      <p><strong>Edit the configuration file.</strong>
+Use your favorite editor to edit the provided slapd.ldif example (usually installed as /usr/local/etc/openldap/slapd.ldif) to contain a MDB database definition of the form:</p>
+
+      <p>dn: olcDatabase=mdb,cn=config
+. . .</p>
+    </li>
+  </ol>
+</blockquote>
+
+<p>I had no idea what an LDIF file was, so I assumed (again in ignorance) that perhaps this was just an idiosyncratic way of referring to a configuration file, so I went searching for <code class="highlighter-rouge">slapd.ldif</code>. No luck. I thought to myself, “surely they have some sort of <code class="highlighter-rouge">.conf</code> file somewhere?” And so I searched for other sources. After some time, I began to form some sort of aggregate consensus drawn from popular sources such as the Gentoo wiki, ArchWiki, CentOS documentation, and a smattering of blogs. The indication seemed to point towards configuration via <code class="highlighter-rouge">slapd.conf</code>. “Alright, then. Let’s give it an edit!” Off I went to make some edits. To my chagrin, there was no such file. At this point, confusion transformed into consternation and frustration. I began to curse OpenLDAP and its documentation.</p>
+
+<p>After some more time and research, I began to understand that <code class="highlighter-rouge">slapd.conf</code> had been deprecated long ago. The documentation made no mention of this. It did not explain its new alternative. I found it difficult to find a terse and concise explanation of the proper method for configuring OpenLDAP. Ultimately I referred to documentation found on <a href="http://www.zytrax.com/books/ldap/">www.zytrax.com</a>. I’d used this source for learning DNS and found that the authors have a deep understanding and do their best to infuse levity wherever possible.</p>
+
+<h3 id="how-openldap-handles-configuration">How OpenLDAP handles configuration</h3>
+
+<p>I’d like to make an attempt at providing what I couldn’t find when I started to learn OpenLDAP: a concise explanation of OpenLDAP’s preferred method of configuration. Generally, you’ll find that the configuration of OpenLDAP is referred to broadly using multiple terms: On-Line Configuration (OLC), <code class="highlighter-rouge">cn=config</code>, and <code class="highlighter-rouge">slapd.d</code> configuration. I prefer OLC because all configuration entries contain this acronym in their names. OpenLDAP deprecated <code class="highlighter-rouge">slapd.conf</code> to implement OLC’s primary benefit—<strong>On-Line</strong> configuration. Previously, if a change was made to OpenLDAP’s configuaration, the server would likely need to be restarted for the change to take effect. Now, OpenLDAP expects changes to configuration the same way it expects changes and additions to a DIT: via <code class="highlighter-rouge">ldapadd</code> and <code class="highlighter-rouge">ldapmodify</code>. Instead of a flat config file, OpenLDAP stores its configuration details in a configuration directory, <code class="highlighter-rouge">/etc/openldap/slapd.d/cn=config</code>.</p>
+
+<p>This is all well and good, but this leaves many questions unanswered. How do you actually make changes? How do you browse current configuration entries? I found it beneficial to first understand how to search and browse the configuration database. Other guides might recommend the installation of a browser based LDAP client such as phpLDAPadmin. In any case, beginning to understand the intricacies of configuration is important and will take time. Once you know <em>what</em> to configure, you may begin to understand LDAP’s idiosyncratic expectations.</p>
+
+<h3 id="how-to-browse-and-change-configuration-entries">How to browse and change configuration entries</h3>
+
+<p>My preferred method for browsing <code class="highlighter-rouge">cn=config</code> is anything but elegant—search the entire thing at once:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo ldapsearch -H ldapi:/// -Y EXTERNAL -b "cn=config" -LLL | less
+</code></pre>
+</div>
+
+<p>Expect a pretty volumonous output. Using <code class="highlighter-rouge">less</code>, you can utilize <code class="highlighter-rouge">/</code> to search for entries and attributes. After verifying the entry that needs changing, an LDIF file can be created. LDIF files are sent to an LDAP server to make changes, facilitating local and remote modifications (this is the whole point of LDAP). Using <code class="highlighter-rouge">olcSuffix</code> as an example, the following is generally what you’d expect from an LDIF file:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+replace: olcSuffix
+olcSuffix: dc=internal,dc=tminor,dc=io
+</code></pre>
+</div>
+
+<p>At first, this format appears quite cumbersome. Examining the contents presented here might help to better understand the function of these files:</p>
+
+<ol>
+  <li>Line one tells OpenLDAP where to look for the entry that needs to be changed. In this case, we’re telling it to look under <code class="highlighter-rouge">olcDatabase={2}bdb</code> which itself resides under <code class="highlighter-rouge">cn=config</code>.</li>
+  <li>Line 2 specifies the <code class="highlighter-rouge">changetype</code>; if the attribute exists, it should be <code class="highlighter-rouge">modify</code>, as in this case.</li>
+  <li>Line 3 indicates the entry to be modified and the action to be taken upon it; “replace” if the entry already exists with a value or “add” if an entry is to be newly created.</li>
+  <li>Line 4 tells OpenLDAP what the new attribute-value assignment should be for the entry.</li>
+</ol>
+
+<p>After creating the file, it can be sent to the OpenLDAP server via <code class="highlighter-rouge">ldapadd</code>:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>sudo ldapadd -H ldapi:/// -Y EXTERNAL -f &lt;filename&gt;.ldif
+</code></pre>
+</div>
+<h3 id="basic-dit">Basic DIT</h3>
+
+<p>Before setting up replication, we need a DIT to replicate. Before actually creating the DIT, we need to specify some information in <code class="highlighter-rouge">cn=config</code>: <code class="highlighter-rouge">olcSuffix</code>, <code class="highlighter-rouge">olcRootDN</code>, <code class="highlighter-rouge">olcRootPW</code>, and <code class="highlighter-rouge">olcAccess</code>. Before continuing, a password will need to be generated using <code class="highlighter-rouge">slappasswd</code>. OpenLDAP stores passwords unencrypted by default; <code class="highlighter-rouge">slappasswd</code> accepts an input and provides a hashed output.</p>
+
+<p>Open a file—naming it root.ldif—and enter the following, changing entries where necessary:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+replace: olcSuffix
+olcSuffix: dc=example,dc=com
+
+dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+replace: olcRootDN
+olcRootDN: cn=Manager,dc=example,dc=com
+
+dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+add: olcRootPW
+olcRootPW: {SSHA}rTy9d6kXWfku6CRso8e9YmCzlZzk2woj
+
+dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+add: olcAccess
+olcAccess: {0}to attrs=userPassword,shadowLastChange by
+  dn="cn=Manager,dc=example,dc=com" write by anonymous auth by self write by * none
+olcAccess: {1}to dn.base="" by * read
+olcAccess: {2}to * by dn="cn=Manager,dc=example,dc=com" write by * read
+</code></pre>
+</div>
+
+<p>The above ACL has the general effect of restricting configuration to the root user on the host itself. For more information on formulating ACLs, see <a href="http://www.openldap.org/doc/admin24/access-control.html">the OpenLDAP Administrator’s Guide</a>. Next, we’ll populate the DIT with some very basic information:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>dn: dc=example,dc=com
+objectClass: top
+objectClass: dcObject
+objectclass: organization
+o: Homelab
+dc: example
+
+dn: cn=Manager,dc=example,dc=com
+objectClass: organizationalRole
+cn: Manager
+description: Directory Manager
+
+dn: ou=People,dc=example,dc=com
+objectClass: organizationalUnit
+ou: People
+
+dn: ou=Group,dc=example,dc=com
+objectClass: organizationalUnit
+ou: Group
+</code></pre>
+</div>
+
+<p>Now the DIT is ready for replication.</p>
+
+<h3 id="configure-the-ldap-hosts-for-replication">Configure the LDAP hosts for replication</h3>
+
+<p>Open a file with your favorite text editor; call the file <code class="highlighter-rouge">mod_syncprov.ldif</code>. Enter the following contents:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>dn: cn=module,cn=config
+objectClass: olcModuleList
+cn: module
+olcModulePath: /usr/lib64/openldap
+olcModuleLoad: syncprov.la
+</code></pre>
+</div>
+
+<p>This file will load the module that allows <code class="highlighter-rouge">syncrepl</code> to provide updates during the replication process. Depending on your OS and the method you chose to install OpenLDAP, it may be necessary to change the <code class="highlighter-rouge">olcModulePath</code>. Load the file:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo ldapadd -H ldapi:// -Y EXTERNAL -f mod_syncprov.ldif
+</code></pre>
+</div>
+
+<p>Next, create a file called <code class="highlighter-rouge">syncprov.ldif</code> with the following contents:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>dn: olcOverlay=syncprov,olcDatabase={2}bdb,cn=config
+objectClass: olcOverlayConfig
+objectClass: olcSyncProvConfig
+olcOverlay: syncprov
+</code></pre>
+</div>
+
+<p>Add the file:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo ldapadd -H ldapi:/// -Y EXTERNAL -f syncprov.ldif
+</code></pre>
+</div>
+
+<p>For a better understanding of overlays and their functions, you can start <a href="http://www.openldap.org/faq/data/cache/1169.html">here</a>.</p>
+
+<p>Next, we’ll concoct an LDIF file to configure the host as a provider:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>dn: cn=config
+changetype: modify
+add: olcServerID
+olcServerID: 1 $URL1
+olcServerID: 2 $URL2
+
+dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+add: olcSyncRepl
+olcSyncRepl:
+  rid=001
+  provider=$URL1
+  binddn="cn=Manager,dc=example,dc=com"
+  bindmethod=simple
+  credentials=&lt;password&gt;
+  searchbase="dc=example,dc=com"
+  type=refreshAndPersist
+  retry="5 5 300 5"
+  timeout=1
+  interval=00:00:00:10
+olcSyncRepl:
+  rid=002
+  provider=$URL2
+  binddn="cn=Manager,dc=example,dc=com""
+  bindmethod=simple
+  credentials=&lt;password&gt;
+  searchbase="dc=example,dc=com"
+  type=refreshAndPersist
+  retry="5 5 300 5"
+  timeout=1
+  interval=00:00:00:10
+-
+add: olcMirrorMode
+olcMirrorMode: TRUE
+</code></pre>
+</div>
+
+<p>Save the file and send it:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo ldapmodify -H ldapi:/// -Y EXTERNAL -f provider.ldif
+</code></pre>
+</div>
+
+<p>For more information about replication types and how to configure them, see the <a href="http://www.openldap.org/doc/admin24/guide.html#Replication">Administrator’s Guide</a>.</p>
+
+<p>At this point the two LDAP servers should be replicating the DIT; to verify that everything is functioning properly, logging needs to be enabled. Create another LDIF file and enter the following information:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>dn: cn=config
+changetype: modify
+replace: olcLogLevel
+olcLogLevel: stats sync
+</code></pre>
+</div>
+
+<p>Load the file with <code class="highlighter-rouge">ldapmodify</code>. Next, configure <code class="highlighter-rouge">rsyslog</code> to write the logs to the desired location. Open <code class="highlighter-rouge">/etc/rsyslog.conf</code> and append the following line to the end of the file:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>local4.*	/var/log/sldapd.log
+</code></pre>
+</div>
+
+<p>Restart <code class="highlighter-rouge">rsyslog</code>:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo service rsyslog restart
+</code></pre>
+</div>
+
+<p>OpenLDAP is now configured for replication.</p>
+
+<h3 id="securing-ldap">Securing LDAP</h3>
+
+<p>One thing to be wary of with the above setup is that replication between the two hosts is not secured; authentication takes place in the clear. <code class="highlighter-rouge">syncrepl</code> does allow for StartTLS using the simple bind method but I could not get it to work with Mozilla NSS (perhaps user error). As an alternative I’ve decided instead to use Kerberos and GSSAPI based encryption. In the next post I’ll go over securing OpenLDAP.</p>

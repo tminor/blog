@@ -1,0 +1,243 @@
+<html>
+  <head>
+    <meta content='How to set up a blog using Jekyll, part 1. - tminor.io' property='og:title' />
+    <title>How to set up a blog using Jekyll, part 1. - tminor.io</title>
+    <link href='http://localhost:4000/images/fav.png' rel='shortcut icon'>
+<link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/style.css' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/syntax.css' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/responsive.css' rel='stylesheet' type='text/css' />
+<!-- - -->
+<script src='http://localhost:4000/javascripts/jquery.js' type='text/javascript'></script>
+<script src='http://localhost:4000/javascripts/pd.js' type='text/javascript'></script>
+<script src='http://localhost:4000/javascripts/basics.js' type='text/javascript'></script>
+<!--<script type="text/javascript" src="https://www.google.com/jsapi"></script>-->
+<!-- - -->
+<meta content='width=device-width, initial-scale=1.0, user-scalable=no' name='viewport'>
+<meta content='text/html; charset=utf-8' http-equiv='content-type' />
+<meta content="http://localhost:4000/og.png" property="og:image" />
+<meta content="" property="fb:app_id" />
+
+  <meta content='http://localhost:4000/2016/12/06/inauguration/' property='og:url' />
+  <meta content="IntroductionIn this series of blog posts, I&rsquo;ll explain the steps that I took to create this site. First up: how..." property='og:description' />
+  <meta content="article" property="og:type" />
+
+<!-- - -->
+<!--<script type='text/javascript'>
+  //<![CDATA[
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', '']);
+    _gaq.push(['_trackPageview']);
+    
+    (function() {
+      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+  //]]>
+</script>-->
+<script>(function(d, s, id) {
+  var js, fjs = d.getElementsByTagName(s)[0];
+  if (d.getElementById(id)) return;
+  js = d.createElement(s); js.id = id;
+  js.src = "//connect.facebook.net/en_GB/all.js#xfbml=1&appId=";
+  fjs.parentNode.insertBefore(js, fjs);
+}(document, 'script', 'facebook-jssdk'));</script>
+
+  </head>
+  <body>
+    <header>
+<a id="go-back-home" href="http://localhost:4000"><img src="http://localhost:4000/images/shebang.svg" alt="#!" width="53" height="59"></a>
+<p>tminor.io</p>
+</header>
+
+    <div id='container'>
+      <div class="block">
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/about">
+       About
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000https://blog.tminor.io">
+       Blog
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/feed.xml">
+       RSS
+     </a>
+  
+</div>
+      <section class="paging">
+  
+    <div class="left">
+      <a href="/category0/category1/2014/12/19/testpost/">
+        ‹
+      </a>
+    </div>
+  
+  
+    <div class="right">
+      <a href="/2016/12/09/jekyll-blog-part2/">
+        ›
+      </a>
+    </div>
+  
+</section>
+      <div class="content">
+        <section class='post'>
+          <h1 class="upcase">
+            <div class='date'>06 Dec 2016</div>
+            How to set up a blog using Jekyll, part 1.
+          </h1>
+          <h3>Introduction</h3>
+
+<p>In this series of blog posts, I&rsquo;ll explain the steps that I took to create this site. First up: how to set up Jekyll, a static page generator. For more information and a better breakdown of what exactly static page generators bring to the table, see <a href="https://www.smashingmagazine.com/2015/11/static-website-generators-jekyll-middleman-roots-hugo-review/">this article</a>. </p>
+
+<hr>
+
+<h3>Build and test a basic Jekyll page</h3>
+
+<p>The steps from this section are lifted directly from <a href="http://jekyllrb.com/docs/home/">Jekyll&rsquo;s documentation</a> but include some troubleshooting that I had to do in order to get everything working properly. The goal is to configure and serve a bare bones Jekyll page so that you can test it via your local computer&rsquo;s web browser. In this guide, I&rsquo;ll be using CentOS 7. Start by installing some packages with <code>yum</code> and RubyGems:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ yum install epel-release ruby ruby-devel rubygems gcc git
+$ gem install bundler jekyll
+</code></pre></div>
+<p>Run <code>jekyll new &lt;blogdir&gt;</code>. This creates a default Jekyll blog directory with the following structure:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">.
+├── _config.yml
+├── _data
+|   └── members.yml
+├── _drafts
+├── _includes
+|   ├── footer.html
+|   └── header.html
+├── _layouts
+|   ├── default.html
+|   └── post.html
+├── _posts
+├── _sass
+|   ├── _base.scss
+|   └── _layout.scss
+├── _site
+├── .jekyll-metadata
+└── index.html
+</code></pre></div>
+<p>At this point (after <code>cd</code>ing into the new Jekyll directory), the documentation instructs you to run <code>bundle exec jekyll serve</code> in order to serve up some fresh web page. Unfortunately for me, this generated an error:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">bundler: failed to load command: jekyll (/usr/local/bin/jekyll)
+LoadError: cannot load such file -- json
+  /home/fong/.gem/ruby/gems/jekyll-3.2.1/lib/jekyll/filters.rb:2:in `require&#39;
+  /home/fong/.gem/ruby/gems/jekyll-3.2.1/lib/jekyll/filters.rb:2:in `&lt;top (required)&gt;&#39;
+  /home/fong/.gem/ruby/gems/jekyll-3.2.1/lib/jekyll.rb:82:in `require&#39;
+  /home/fong/.gem/ruby/gems/jekyll-3.2.1/lib/jekyll.rb:82:in `&lt;module:Jekyll&gt;&#39;
+  /home/fong/.gem/ruby/gems/jekyll-3.2.1/lib/jekyll.rb:36:in `&lt;top (required)&gt;&#39;
+  /home/fong/.gem/ruby/gems/jekyll-3.2.1/exe/jekyll:6:in `require&#39;
+  /home/fong/.gem/ruby/gems/jekyll-3.2.1/exe/jekyll:6:in `&lt;top (required)&gt;&#39;
+  /usr/local/bin/jekyll:23:in `load&#39;
+  /usr/local/bin/jekyll:23:in `&lt;top (required)&gt;&#39;
+</code></pre></div>
+<p>After some googling, I found a solution that seemed to remedy the issue. Open up <code>~/&lt;blogdir&gt;/Gemfile</code> with your gavorite text editor and append the following line: <code>gem &quot;json&quot;, &quot;2.0.2&quot;</code>. Follow that up by running two more commands:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ gem uninstall ffi
+$ gem install ffi --platform=ruby
+</code></pre></div>
+<p>At this point I was able to run <code>bundle exec jekyll serve</code> without issue.</p>
+
+<hr>
+
+<h3>Pick a theme and make it your own</h3>
+
+<p>Jekyll enables the use of pre-created themes. You can find them in a variety of places; I found the theme that this site uses <a href="https://jekyllthemes.io/">here</a>.</p>
+
+<p>If your theme has a repository hosted on GitHub, you can clone the repository to a local directory:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ mkdir &lt;blogdir&gt; &amp;&amp; cd &lt;blogdir&gt;
+$ git clone https://github.com/username/scribble
+</code></pre></div>
+<p>Once you&rsquo;ve cloned the repository, you can run <code>bundle install</code> and <code>bundle exec jekyll serve</code> to view your webpage via your local browser by navigating to http://127.0.0.1:4000. </p>
+
+<hr>
+
+<h3>Conclusion</h3>
+
+<p>At this point, you&rsquo;d probably customize your theme a bit and start writing some content. You can author your posts by editing files within the <code>_posts</code> directory. In the next installment of this series, we&rsquo;ll explore how to deploy and serve this new content via Capistrano and Apache on a VPS.</p>
+
+          <!--
+<br />
+<p>
+  Until next time,<br/>
+  Thomas
+  <span class="muted">at 09:46</span>
+</p>
+<p>
+  <img src="/images/blog.svg" alt="./blog.sh" width="70" height="40" /> 
+</p>
+-->
+
+
+        </section>
+      </div>
+      
+
+      
+        <div class="block">
+  <div id="disqus_thread"></div>
+    <script>
+      /**
+      *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+      *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+      */
+      /*
+      var disqus_config = function () {
+        this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+      };
+      */
+      (function() {  // DON'T EDIT BELOW THIS LINE
+        var d = document, s = d.createElement('script');
+
+        s.src = '//blog-tminor-io.disqus.com/embed.js';
+
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+      })();
+    </script>
+  <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+</div>
+
+      
+      <div class="block">
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/about">
+       About
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000https://blog.tminor.io">
+       Blog
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/feed.xml">
+       RSS
+     </a>
+  
+</div>
+    </div>
+    <!--
+<footer>
+  <a href="http://github.com/muan/scribble" class="muted">built with Jekyll using Scribble theme</a>
+  <br />
+  <br />
+  <img src="http://localhost:4000/images/eof.svg" alt="./blog.sh" width="40" height="27"/> 
+</footer>
+-->
+
+  </body>
+</html>

@@ -1,0 +1,231 @@
+<html>
+  <head>
+    <meta content='Syncthing, configuring a self-hosted syncing service. - tminor.io' property='og:title' />
+    <title>Syncthing, configuring a self-hosted syncing service. - tminor.io</title>
+    <link href='http://localhost:4000/images/fav.png' rel='shortcut icon'>
+<link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/style.css' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/syntax.css' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/responsive.css' rel='stylesheet' type='text/css' />
+<!-- - -->
+<script src='http://localhost:4000/javascripts/jquery.js' type='text/javascript'></script>
+<script src='http://localhost:4000/javascripts/pd.js' type='text/javascript'></script>
+<script src='http://localhost:4000/javascripts/basics.js' type='text/javascript'></script>
+<!--<script type="text/javascript" src="https://www.google.com/jsapi"></script>-->
+<!-- - -->
+<meta content='width=device-width, initial-scale=1.0, user-scalable=no' name='viewport'>
+<meta content='text/html; charset=utf-8' http-equiv='content-type' />
+<meta content="http://localhost:4000/og.png" property="og:image" />
+<meta content="" property="fb:app_id" />
+
+  <meta content='http://localhost:4000/2017/04/20/syncthing/' property='og:url' />
+  <meta content="An interludeI&rsquo;m breaking from the series of web security posts in a diversion that I hope will end in an accept..." property='og:description' />
+  <meta content="article" property="og:type" />
+
+<!-- - -->
+<!--<script type='text/javascript'>
+  //<![CDATA[
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', '']);
+    _gaq.push(['_trackPageview']);
+    
+    (function() {
+      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+  //]]>
+</script>-->
+<script>(function(d, s, id) {
+  var js, fjs = d.getElementsByTagName(s)[0];
+  if (d.getElementById(id)) return;
+  js = d.createElement(s); js.id = id;
+  js.src = "//connect.facebook.net/en_GB/all.js#xfbml=1&appId=";
+  fjs.parentNode.insertBefore(js, fjs);
+}(document, 'script', 'facebook-jssdk'));</script>
+
+  </head>
+  <body>
+    <header>
+<a id="go-back-home" href="http://localhost:4000"><img src="http://localhost:4000/images/shebang.svg" alt="#!" width="53" height="59"></a>
+<p>tminor.io</p>
+</header>
+
+    <div id='container'>
+      <div class="block">
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/about">
+       About
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000https://blog.tminor.io">
+       Blog
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/feed.xml">
+       RSS
+     </a>
+  
+</div>
+      <section class="paging">
+  
+    <div class="left">
+      <a href="/2017/04/13/configure-security-headers/">
+        ‹
+      </a>
+    </div>
+  
+  
+    <div class="right">
+      <a href="/2017/07/02/passing-some-web-security-tests/">
+        ›
+      </a>
+    </div>
+  
+</section>
+      <div class="content">
+        <section class='post'>
+          <h1 class="upcase">
+            <div class='date'>20 Apr 2017</div>
+            Syncthing, configuring a self-hosted syncing service.
+          </h1>
+          <h3>An interlude</h3>
+
+<p>I&rsquo;m breaking from the series of web security posts in a diversion that I hope will end in an acceptable solution to a problem I&rsquo;ve been experiencing. The problem is not unique and many solutions exist for it: I have a bunch of directories that I&rsquo;d like to sync between multiple machines. I&rsquo;ve been using <code>rsync</code>, and while I&rsquo;m sure it&rsquo;s possible to wrangle it into doing what I&rsquo;d like, I&rsquo;m interested in a more elegant solution. Enter <a href="https://syncthing.net/">Syncthing</a>.</p>
+
+<h3>How is Syncthing unique?</h3>
+
+<p>The de facto standard solution for the problem stated above is Dropbox. Dropbox is great and Just Works™, but I&rsquo;d like a self-hosted solution. Not only that, but I don&rsquo;t need any of the bells and whistles that Dropbox offers and it&rsquo;s another excuse to fiddle around with technoligically interesting things.</p>
+
+<hr>
+
+<h3>Installing Syncthing</h3>
+
+<p>Syncthing has <a href="https://docs.syncthing.net/users/contrib.html#contributions">different flavors for different operating systems</a> and in this case I&rsquo;m running CentOS 7. You can find the unofficial Syncthing RPM and accompanying directions <a href="https://github.com/mlazarov/syncthing-centos">here</a>.</p>
+
+<p>I had to install <code>rpmdevtools</code> before following the instructions above, though you may have to install all of the additional packages suggested in the documentation:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo yum install rpmdevtools
+</code></pre></div>
+<p>Now we can install the RPM and proceed:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ yum install https://github.com/mlazarov/syncthing-centos/releases/download/v0.14.7/syncthing-0.14.7-0.el7.centos.x86_64.rpm
+</code></pre></div>
+<p>Once the RPM is installed, we can set up the necessary directory structure, clone the repo, and build the package:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ git clone https://github.com/mlazarov/syncthing-centos.git rpmbuild/
+$ mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+$ echo &#39;%_topdir %(echo $HOME)/rpmbuild&#39; &gt; ~/.rpmmacros
+$ cd ~/rpmbuild/SOURCES/
+$ spectool -g ../SPECS/syncthing.spec
+$ cd ~/rpmbuild/SPECS/
+$ rpmbuild -bb syncthing.spec
+</code></pre></div>
+<hr>
+
+<h3>Configuring Syncthing</h3>
+
+<p><a href="https://docs.syncthing.net/intro/getting-started.html">The Getting Started</a> guide walks through the configuration process by advising us to configure Syncthing at <code>https://localhost:8384</code>; since I&rsquo;m configuring Syncthing on a remote server, I found that <a href="https://docs.syncthing.net/users/config.html">the configuration section of the documentation</a> helped me get to the point where I could reach the admin console over the Internet.</p>
+
+<p>First, start the service to generate the <code>.config</code> directory for Syncthing:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo systemctl start syncthing@&lt;username&gt;
+</code></pre></div>
+<p>We can now find Syncthing&rsquo;s config file at <code>$HOME/.config/syncthing</code>; let&rsquo;s open it and make some alterations so that we can get to the admin console. Find the <code>&lt;gui&gt;</code> element and change the value for the <code>&lt;address&gt;</code> child element to reflect the value for the IP address at which we&rsquo;ll be reaching the admin console:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">&lt;gui enabled=&quot;true&quot; tls=&quot;true&quot;&gt;
+    &lt;address&gt;192.168.0.255:8384&lt;/address&gt;
+    &lt;apikey&gt;l7jSbCqPD95JYZ0g8vi4ZLAMg3ulnN1b&lt;/apikey&gt;
+    &lt;theme&gt;default&lt;/theme&gt;
+&lt;/gui&gt;
+</code></pre></div>
+<p>Once this is done, restart the service and connect to the address that we entered above. You should receive a warning about the interface being open to the internet; click on the <strong>settings</strong> button and set up a username/password and check the box to enable HTTPS. Restart the service and reload the page.</p>
+
+<h3>Adding additional devices</h3>
+
+<p>Next we&rsquo;ll need to configure Syncthing on other devices that expect to participate in synchronizing directories and files. I&rsquo;m running Syncthing on OS X, so that&rsquo;s the only platform I&rsquo;ll cover (unless I decide to start using it on Windows, in which case I&rsquo;ll update this at that point).</p>
+
+<p>I found that <a href="https://github.com/xor-gate/syncthing-macosx/releases/tag/v0.14.8-2">this GitHub project</a> seems to be the best maintained of the Community Contributions. Not only that but it provides a DMG for installation which you can find at the hyperlink included in the last sentence. Use the DMG to install Syncthing; a window should prompt you to move the Syncthing icon into the <code>~/Applications</code> directory, which you should do. Go ahead and double-click the application; Syncthing should open its web interface at <code>http://127.0.0.:8384</code>. When I set everything up, Syncthing was configured to auto-update, which it did. After restarting, the web interface was not reachable. I didn&rsquo;t want to wrestle with it, so I turned off auto-update in settings, moved the application to the trash, reinstalled it and everything worked.</p>
+
+<p>To add other devices, you can click &ldquo;Show ID&rdquo; under the Actions drop down menu, copy the ID, click &ldquo;+Add Remote Device&rdquo; in the other machine&rsquo;s web console, and paste the ID. Once this is done, you should see a prompt on the other web console to add another remote device which configures everything once you accept it. The last thing that I did—configuration-wise—was designate the headless server as an &ldquo;Introducer;&rdquo; this means that any additional devices added via the web interface on the headless server will be auto-configured on any additional devices. Pretty cool.</p>
+
+<p>Now you can configure synced directories to your heart&rsquo;s content.</p>
+
+          <!--
+<br />
+<p>
+  Until next time,<br/>
+  Thomas
+  <span class="muted">at 11:57</span>
+</p>
+<p>
+  <img src="/images/blog.svg" alt="./blog.sh" width="70" height="40" /> 
+</p>
+-->
+
+
+        </section>
+      </div>
+      
+
+      
+        <div class="block">
+  <div id="disqus_thread"></div>
+    <script>
+      /**
+      *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+      *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+      */
+      /*
+      var disqus_config = function () {
+        this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+      };
+      */
+      (function() {  // DON'T EDIT BELOW THIS LINE
+        var d = document, s = d.createElement('script');
+
+        s.src = '//blog-tminor-io.disqus.com/embed.js';
+
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+      })();
+    </script>
+  <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+</div>
+
+      
+      <div class="block">
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/about">
+       About
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000https://blog.tminor.io">
+       Blog
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/feed.xml">
+       RSS
+     </a>
+  
+</div>
+    </div>
+    <!--
+<footer>
+  <a href="http://github.com/muan/scribble" class="muted">built with Jekyll using Scribble theme</a>
+  <br />
+  <br />
+  <img src="http://localhost:4000/images/eof.svg" alt="./blog.sh" width="40" height="27"/> 
+</footer>
+-->
+
+  </body>
+</html>

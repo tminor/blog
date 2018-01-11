@@ -1,0 +1,296 @@
+<html>
+  <head>
+    <meta content='How to set up a blog using Jekyll, part 3. - tminor.io' property='og:title' />
+    <title>How to set up a blog using Jekyll, part 3. - tminor.io</title>
+    <link href='http://localhost:4000/images/fav.png' rel='shortcut icon'>
+<link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/style.css' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/syntax.css' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/responsive.css' rel='stylesheet' type='text/css' />
+<!-- - -->
+<script src='http://localhost:4000/javascripts/jquery.js' type='text/javascript'></script>
+<script src='http://localhost:4000/javascripts/pd.js' type='text/javascript'></script>
+<script src='http://localhost:4000/javascripts/basics.js' type='text/javascript'></script>
+<!--<script type="text/javascript" src="https://www.google.com/jsapi"></script>-->
+<!-- - -->
+<meta content='width=device-width, initial-scale=1.0, user-scalable=no' name='viewport'>
+<meta content='text/html; charset=utf-8' http-equiv='content-type' />
+<meta content="http://localhost:4000/og.png" property="og:image" />
+<meta content="" property="fb:app_id" />
+
+  <meta content='http://localhost:4000/2016/12/13/jekyll-blog-part3/' property='og:url' />
+  <meta content="IntroductionWelcome to the final round of this series on how to set up a Jekyll blog! In this post, I&rsquo;ll go ove..." property='og:description' />
+  <meta content="article" property="og:type" />
+
+<!-- - -->
+<!--<script type='text/javascript'>
+  //<![CDATA[
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', '']);
+    _gaq.push(['_trackPageview']);
+    
+    (function() {
+      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+  //]]>
+</script>-->
+<script>(function(d, s, id) {
+  var js, fjs = d.getElementsByTagName(s)[0];
+  if (d.getElementById(id)) return;
+  js = d.createElement(s); js.id = id;
+  js.src = "//connect.facebook.net/en_GB/all.js#xfbml=1&appId=";
+  fjs.parentNode.insertBefore(js, fjs);
+}(document, 'script', 'facebook-jssdk'));</script>
+
+  </head>
+  <body>
+    <header>
+<a id="go-back-home" href="http://localhost:4000"><img src="http://localhost:4000/images/shebang.svg" alt="#!" width="53" height="59"></a>
+<p>tminor.io</p>
+</header>
+
+    <div id='container'>
+      <div class="block">
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/about">
+       About
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000https://blog.tminor.io">
+       Blog
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/feed.xml">
+       RSS
+     </a>
+  
+</div>
+      <section class="paging">
+  
+    <div class="left">
+      <a href="/2016/12/12/How-to-save-a-file-vim/">
+        ‹
+      </a>
+    </div>
+  
+  
+    <div class="right">
+      <a href="/2016/12/21/iconrad-project/">
+        ›
+      </a>
+    </div>
+  
+</section>
+      <div class="content">
+        <section class='post'>
+          <h1 class="upcase">
+            <div class='date'>13 Dec 2016</div>
+            How to set up a blog using Jekyll, part 3.
+          </h1>
+          <h3>Introduction</h3>
+
+<p>Welcome to the final round of this series on how to set up a Jekyll blog! In this post, I&rsquo;ll go over how to set up Apache to provide URL redirection and how to set up a certificate with Let&rsquo;s Encrypt.</p>
+
+<hr>
+
+<h3>Install and configure Apache</h3>
+
+<p>Before we get into the rigmarole of installing Apache, we&rsquo;ll take a look at why we&rsquo;re choosing Apache over any other alternative. The answer—in my case at least—is because it&rsquo;s pretty much the <em>de facto</em> standard of HTTP servers. There&rsquo;s ample documentation, it&rsquo;s proven to be reliable/secure, and I&rsquo;ve used it in the past and find its configuration to be pretty straightforward. If you&rsquo;re interested in learning more about HTTP servers, take a look at <a href="https://opensource.com/business/16/8/top-5-open-source-web-servers">this</a> post. You can also see current HTTP server usage statistics <a href="https://w3techs.com/technologies/overview/web_server/all">here</a>.</p>
+
+<p>Moving on, we&rsquo;ll first want to install Apache and enable it on startup:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo yum install httpd
+$ sudo systemctl enable httpd
+</code></pre></div>
+<p>Next, we&rsquo;ll create a directory for our site&rsquo;s document root; essentially, Apache looks in a document root directory for content requested via HTTP. For our purposes, we&rsquo;ll create just one directory. Apache supports virtual hosts in order to facilitate hosting multiple web sites on one physical host. Create a directory for each virtual host and change the permissions and ownership:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo mkdir -p /var/www/example.com
+$ sudo chown -R $USER:$USER /var/www/example.com
+$ sudo chmod -R 755 /var/www
+</code></pre></div>
+<p>The <code>$USER</code> variable above should be replaced by the user that we use to administer the web server. By running these commands, we&rsquo;ve done the following:</p>
+
+<ol>
+<li>Established our Apache document root for example.com.</li>
+<li>Changed ownership to our administrative (non-root) user.</li>
+<li>Assigned read permissions to <code>/var/www/</code> so that pages can be served properly.</li>
+</ol>
+
+<p>The next steps in the process are peculiar to CentOS; they are but one example in illustrating some of the differences between the various flavors of Linux. With a default installation of Apache on any version of the RHEL-based distributions, virtual host configuration would be done via <code>/etc/httpd/conf/httpd.conf</code>, but in this case we&rsquo;ll implement a directory structure used in Debian-based distributions. Create the necessary directories:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo mkdir /etc/httpd/sites-available
+$ sudo mkdir /etc/httpd/sites-enabled
+</code></pre></div>
+<p>Open <code>/etc/httpd/conf/httpd.conf</code> with your favorite text editor and add the following line to the bottom of the file:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">IncludeOptional sites-enabled/*.conf
+</code></pre></div>
+<p>A quick explanation of what&rsquo;s going on here: this directory structure facilitates a more flexible method for managing multiple virtual hosts. For each site, we would create a file in <code>/etc/sites-available</code> and then symbolically link to a file in <code>/etc/sites-enabled</code>; if we need to take a site offline for any reason, we need only to destroy the symbolic link.</p>
+
+<p>We&rsquo;ll now create our virtual host file. Open up a new file, <code>/etc/httpd/sites-available/example.com.conf/</code> and add the following:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">&lt;VirtualHost *:80&gt;
+    ServerName www.example.com
+    ServerAlias example.com
+    DocumentRoot /var/www/example.com/public_html
+    ErrorLog /var/www/example.com/error.log
+    CustomLog /var/www/example.com/requests.log combined
+&lt;/VirtualHost&gt;
+</code></pre></div>
+<p>Restart Apache:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo apachectl restart
+</code></pre></div>
+<p>This is the bare minimum to get Apache up and running to serve a web site. One quick note: even though our virtual host file specifies port 80 (the default for HTTP), HTTPS will still work. I&rsquo;m not really sure why this is. If anyone happens to read this and could shed some light, I&rsquo;d be interested to know why. I suspect it has something to do with the <code>mod_rewrite</code> rules defined below, but I&rsquo;m not 100% sure.</p>
+
+<hr>
+
+<h3>Configure a 301 redirect with Apache</h3>
+
+<p>What&rsquo;s a 301 redirect? Essentially, a 301 redirect takes traffic for a target URL and sends it to a different, specified URL. In our case, we&rsquo;ll use it to redirect traffic from <code>example.com</code> to <code>www.example.com</code>. This strategy can be used for a variety of reasons other than simple redirects; if a company wants to protect its intellectual property, it might purchase domain names that include misspellings. An example is <code>gogle.com</code>. Try it out. You&rsquo;ll get redirected to <code>google.com</code>. For a more detailed explanation, see <a href="https://en.wikipedia.org/wiki/HTTP_301">here</a>.</p>
+
+<p>Before this can work properly we&rsquo;ll need to have DNS A records for the two URLs involved in this process. Using BIND DNS as an example, the records would look like the following within the zone file for example.com:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ORIGIN example.com.
+...
+www     IN      A       192.168.0.1
+@       IN      A       192.168.0.1
+...
+</code></pre></div>
+<p>We&rsquo;ll also have to ensure that we&rsquo;ve enabled Apache&rsquo;s <code>mod_rewrite</code> module. This module is enabled by default on CentOS 7, but in case it&rsquo;s not enabled, add the following line to <code>/etc/httpd/conf.modules.d/00-base.conf</code>:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">LoadModule rewrite_module modules/mod_rewrite.so
+</code></pre></div>
+<p>Open up <code>/etc/httpd/conf/httpd.conf</code> again, find the following block, and change the <code>AllowOverride</code> directive to reflect the following:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">&lt;Directory &quot;/var/www/html&quot;&gt;
+    AllowOverride All
+    # Allow open access:
+    Require all granted
+&lt;/Directory&gt;
+</code></pre></div>
+<p>Restart Apache:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo systemctl restart httpd
+</code></pre></div>
+<p>With <code>AllowOverride</code> enabled, Apache reads <code>.htaccess</code> files in the document root, as defined in <code>/etc/httpd/conf/httpd.conf</code> (<code>/var/www/</code> by default). To configure 301 redirects per virtual host, we&rsquo;ll need to make sure that our <code>.htaccess</code> files exist in each site&rsquo;s document root. The <code>.htaccess</code> file contains rules that are defined through the use of regular expressions and rule conditions. If you&rsquo;re interested in learning more about <code>mod_rewrite</code>, see <a href="http://httpd.apache.org/docs/current/mod/mod_rewrite.html">here</a> and <a href="http://httpd.apache.org/docs/current/mod/mod_rewrite.html">here</a>. </p>
+
+<p>Generally, we&rsquo;d expect to create and edit our <code>.htaccess</code> files in place on our web server. Since we&rsquo;re using Capistrano, we&rsquo;ll avoid this. When Capistrano runs its deployment tasks, it executes the following:</p>
+
+<figure class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="n">namespace</span> <span class="ss">:symlink</span> <span class="k">do</span>
+  <span class="n">desc</span> <span class="s2">&quot;Symlink release to current&quot;</span>
+  <span class="n">task</span> <span class="ss">:release</span> <span class="k">do</span>
+    <span class="n">on</span> <span class="n">release_roles</span> <span class="ss">:all</span> <span class="k">do</span>
+      <span class="n">tmp_current_path</span> <span class="o">=</span> <span class="n">release_path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">current_path</span><span class="o">.</span><span class="n">basename</span><span class="p">)</span>
+      <span class="n">execute</span> <span class="ss">:ln</span><span class="p">,</span> <span class="s2">&quot;-s&quot;</span><span class="p">,</span> <span class="n">release_path</span><span class="p">,</span> <span class="n">tmp_current_path</span>
+      <span class="n">execute</span> <span class="ss">:mv</span><span class="p">,</span> <span class="n">tmp_current_path</span><span class="p">,</span> <span class="n">current_path</span><span class="o">.</span><span class="n">parent</span>
+    <span class="k">end</span>
+  <span class="k">end</span></code></pre></figure>
+
+<p>As you can see, Capistrano takes all of our old content and executes <code>mv</code> to store it in a releases directory. To avoid the removal of our <code>.htaccess</code> file every time we run <code>cap deploy</code>, we simply need to edit and save the file within our local Jekyll blog directory. The file should resemble the following in order to redirect from non-www to a www URL:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">RewriteEngine On
+RewriteBase /
+RewriteCond %{HTTP_HOST} !^www\. [NC]
+RewriteRule ^(.*)$ https://www.%{HTTP_HOST}/$1 [R=301,L]
+</code></pre></div>
+<p>Since we&rsquo;ll be setting up SSL certificates for our website, we want to make sure that the above file reflects as much—<code>https://</code> instead of <code>http://</code>. </p>
+
+<hr>
+
+<h3>Install a Let&rsquo;s Encrypt certificate</h3>
+
+<p>In this section, we&rsquo;ll install an SSL certificate issued by Let&rsquo;s Encrypt. Let&rsquo;s Encrypt uses a certificate management agent to verify the identity of a web host; Let&rsquo;s Encrypt documentation recommends Certbot, so we&rsquo;ll install it:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo yum install python-certbot-apache
+</code></pre></div>
+<p>Before we generate the certificate, we need to install Apache&rsquo;s <code>mod_ssl</code> module:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo yum install mod_ssl
+</code></pre></div>
+<p>To generate the certificate, run the command below and follow the interactive prompts:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo certbot --apache -d example.com
+</code></pre></div>
+<p>You can find the certificate files in <code>/etc/letsencrypt/live</code>. We&rsquo;ll restart Apache for these changes to take effect:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo systemctl restart httpd
+</code></pre></div>
+<p>We should now be able to reach our site with an <code>https://</code> prefix.</p>
+
+<hr>
+
+<h3>Conclusion</h3>
+
+<p>We now have a blogging platform that utilizes automated deployment, Apache URL redirection, and TLS encryption via Let&rsquo;s Encrypt. </p>
+
+          <!--
+<br />
+<p>
+  Until next time,<br/>
+  Thomas
+  <span class="muted">at 07:13</span>
+</p>
+<p>
+  <img src="/images/blog.svg" alt="./blog.sh" width="70" height="40" /> 
+</p>
+-->
+
+
+        </section>
+      </div>
+      
+
+      
+        <div class="block">
+  <div id="disqus_thread"></div>
+    <script>
+      /**
+      *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+      *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+      */
+      /*
+      var disqus_config = function () {
+        this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+      };
+      */
+      (function() {  // DON'T EDIT BELOW THIS LINE
+        var d = document, s = d.createElement('script');
+
+        s.src = '//blog-tminor-io.disqus.com/embed.js';
+
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+      })();
+    </script>
+  <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+</div>
+
+      
+      <div class="block">
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/about">
+       About
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000https://blog.tminor.io">
+       Blog
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/feed.xml">
+       RSS
+     </a>
+  
+</div>
+    </div>
+    <!--
+<footer>
+  <a href="http://github.com/muan/scribble" class="muted">built with Jekyll using Scribble theme</a>
+  <br />
+  <br />
+  <img src="http://localhost:4000/images/eof.svg" alt="./blog.sh" width="40" height="27"/> 
+</footer>
+-->
+
+  </body>
+</html>

@@ -1,0 +1,19 @@
+<h3 id="oops">Oops</h3>
+
+<p>Let’s say that you’ve just finished a long edit of a read-only config file as a regular user. You forgot to open the file with elevated privileges. What do you do? Thankfully, <code class="highlighter-rouge">vi</code> allows users to run UNIX commands without having to exit the program:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>:w !sudo tee %
+</code></pre>
+</div>
+
+<p>Here’s a quick breakdown of the above command:</p>
+
+<ol>
+  <li><code class="highlighter-rouge">:</code> tells <code class="highlighter-rouge">vi</code> that you’d like to issue a command.</li>
+  <li><code class="highlighter-rouge">w</code> tells <code class="highlighter-rouge">vi</code> to write the current file.</li>
+  <li><code class="highlighter-rouge">!</code> tells <code class="highlighter-rouge">vi</code> to expect a shell command to follow.</li>
+  <li><code class="highlighter-rouge">tee</code> is a shell command to copy from standard input and write to standard output.</li>
+  <li><code class="highlighter-rouge">%</code> tells <code class="highlighter-rouge">vi</code> to use the current file name.</li>
+</ol>
+
+<p>As an aside, you may also be interested to note that you can open a shell prompt from within <code class="highlighter-rouge">vi</code> by running <code class="highlighter-rouge">:sh</code>. <code class="highlighter-rouge">vi</code> will use whatever is returned by <code class="highlighter-rouge">echo $SHELL</code>.</p>

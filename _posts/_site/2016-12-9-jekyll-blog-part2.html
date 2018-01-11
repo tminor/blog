@@ -1,0 +1,108 @@
+<h3 id="introduction">Introduction</h3>
+
+<p>This post will build upon the previous one by detailing what it takes to automate the deployment of a Jekyll site via Capistrano. First, we’ll take a look at the benefits and outline why we might be interested in implementing Jekyll in this fashion. Hypothetically, we could edit our posts directly on the web server hosting our blog. This would surely be the simplest way to publish our content, but it would probably be preferable to have a testing environment so that we have a place to do a dry run before posting something riddled with typographical errors and whatnot. With Capistrano, our workflow would look something like this:</p>
+
+<ol>
+  <li>Create a post on your local machine.</li>
+  <li>Use Jekyll to serve your site over the loopback address.</li>
+  <li>Test the site with your browser.</li>
+  <li>Assuming everything went well, deploy new content to a web server.</li>
+</ol>
+
+<p>I’ve got this working and I find that it’s extremely convenient and works pretty well. Whenever I have a post ready to go, it’s as simple as running <code class="highlighter-rouge">cap deploy</code> from the Jekyll blog directory and voilà, everything is ready for viewing on the internet!</p>
+
+<hr />
+
+<h3 id="install-capistrano">Install Capistrano</h3>
+
+<p>As with every project, I began the process by using google to find a suitable guide. The first that I found was <a href="https://www.digitalocean.com/community/tutorials/how-to-get-started-with-jekyll-on-an-ubuntu-vps">this one</a> on DigitalOcean. The first issue that I ran into was that Capistrano has released version 3 since DigitalOcean’s guide was posted. Knowing nothing about Capistrano, this only meant that Capistrano didn’t work the way I expected. If you’re interested in deeper reading on the differences between the two, check out <a href="http://building.wanelo.com/2014/03/31/capistrano-you-have-changed.html">this</a> post. While it feels like a cop out, I opted to install version 2 instead of learning something new (probably something I shouldn’t admit). Without further ado, let’s get into the installation process.</p>
+
+<p>The first thing to do is install Capistrano via RubyGems. We’ll use the <code class="highlighter-rouge">-v</code> option to specify a particlar version—namely, not version 3. After installation completes, we’ll <code class="highlighter-rouge">cd</code> into our Jekyll blog directory and run the <code class="highlighter-rouge">capify</code> command. Here are the commands, in order:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ gem install capistrano -v 2.15.5
+$ cd &lt;blogdir&gt;
+$ capify .
+</code></pre>
+</div>
+
+<p>The last command (<code class="highlighter-rouge">capify</code>) creates all the necessary files and directories for a Capistrano deployment, one of which is a Capistrano <code class="highlighter-rouge">config/</code> directory. Inside we’ll find a file, <code class="highlighter-rouge">deploy.rb</code>. This file needs to be customized per requirements. See mine below; I’ve added comments outlining changes that I made and why (I stole mine from <a href="https://dsgn.io/thoughts/post/jekyll-deployment-with-digitalocean/">here</a>):</p>
+
+<figure class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="n">set</span> <span class="ss">:application</span><span class="p">,</span> <span class="s2">"Blog"</span>
+<span class="n">set</span> <span class="ss">:repository</span><span class="p">,</span> <span class="s1">'_site'</span>
+<span class="n">set</span> <span class="ss">:scm</span><span class="p">,</span> <span class="ss">:none</span>
+<span class="n">set</span> <span class="ss">:deploy_via</span><span class="p">,</span> <span class="ss">:copy</span>
+<span class="n">set</span> <span class="ss">:copy_compression</span><span class="p">,</span> <span class="ss">:gzip</span>
+<span class="n">set</span> <span class="ss">:use_sudo</span><span class="p">,</span> <span class="kp">false</span>
+
+<span class="c1"># When running cap deploy from a machine running OS X, it is necessary</span>
+<span class="c1"># to specify to Capistrano that we want to use GNU tar; otherwise,</span>
+<span class="c1"># cap deploy will throw errors</span>
+<span class="n">set</span> <span class="ss">:copy_local_tar</span><span class="p">,</span> <span class="s2">"/usr/local/bin/gtar"</span> <span class="k">if</span> <span class="sb">`uname`</span> <span class="o">=~</span> <span class="sr">/Darwin/</span>
+
+<span class="c1"># the name of the user that should be used for deployments on your VPS</span>
+<span class="n">set</span> <span class="ss">:user</span><span class="p">,</span> <span class="s2">"tminor"</span>
+
+<span class="c1"># the path to deploy to on your VPS</span>
+<span class="n">set</span> <span class="ss">:deploy_to</span><span class="p">,</span> <span class="s2">"/var/www/example.com/current"</span>
+
+<span class="c1"># the ip address of your VPS</span>
+<span class="n">role</span> <span class="ss">:web</span><span class="p">,</span> <span class="s2">"192.168.1.0"</span>
+
+<span class="n">before</span> <span class="s1">'deploy:update'</span><span class="p">,</span> <span class="s1">'deploy:update_jekyll'</span>
+
+<span class="n">namespace</span> <span class="ss">:deploy</span> <span class="k">do</span>
+  <span class="p">[</span><span class="ss">:start</span><span class="p">,</span> <span class="ss">:stop</span><span class="p">,</span> <span class="ss">:restart</span><span class="p">,</span> <span class="ss">:finalize_update</span><span class="p">].</span><span class="nf">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">t</span><span class="o">|</span>
+    <span class="n">desc</span> <span class="s2">"</span><span class="si">#{</span><span class="n">t</span><span class="si">}</span><span class="s2"> task is a no-op with jekyll"</span>
+    <span class="n">task</span> <span class="n">t</span><span class="p">,</span> <span class="ss">:roles</span> <span class="o">=&gt;</span> <span class="ss">:app</span> <span class="k">do</span> <span class="p">;</span> <span class="k">end</span>
+  <span class="k">end</span>
+
+  <span class="n">desc</span> <span class="s1">'Run jekyll to update site before uploading'</span>
+  <span class="n">task</span> <span class="ss">:update_jekyll</span> <span class="k">do</span>
+    <span class="c1"># clear existing _site</span>
+    <span class="c1"># build site using jekyll</span>
+    <span class="c1"># remove Capistrano stuff from build</span>
+    <span class="c1"># also added bundle exec to avoid build errors</span>
+    <span class="sx">%x(rm -rf _site/* &amp;&amp; bundle exec jekyll build &amp;&amp; rm _site/Capfile &amp;&amp; rm -rf _site/config)</span>
+  <span class="k">end</span>
+<span class="k">end</span></code></pre></figure>
+
+<p>Assuming everything is set up properly in our <code class="highlighter-rouge">deploy.rb</code> we can run <code class="highlighter-rouge">cap deploy:setup</code> to prepare the VPS with the necessary Capistrano directories. Having done that, we can now run <code class="highlighter-rouge">cap deploy</code> to deploy our blog.</p>
+
+<hr />
+
+<h3 id="ntp-issue">NTP issue</h3>
+
+<p>In the previous section, we assumed everything was good to go. In my case, this wasn’t so. When running <code class="highlighter-rouge">cap deploy</code>, the output indicated that there may be a time sync issue. The error messages were similar to the ones below:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>** [out :: 123.45.67.890] tar: 20110603143429/.autotest: time stamp 2011-06-03 14:34:33 is 368.72042712 s in the future
+** [out :: 123.45.67.890] tar: 20110603143429/.bundle: time stamp 2011-06-03 14:34:33 is 368.719540808 s in the future
+** [out :: 123.45.67.890] tar: 20110603143429/.hgignore: time stamp 2011-06-03 14:34:33 is 368.719465444 s in the future
+** [out :: 123.45.67.890] tar: 20110603143429/app: time stamp 2011-06-03 14:34:34 is 369.719382175 s in the future
+</code></pre>
+</div>
+
+<p>The fix was fairly straightforward. I pointed OS X towards <code class="highlighter-rouge">time.google.com</code> and did the same for my CentOS VPS. I’ll skip instructions for OS X as it’s fairly straightforward. In order to fix this issue on CentOS (and pretty much any other flavor of Linux), start by installing <code class="highlighter-rouge">ntpd</code> via <code class="highlighter-rouge">yum install ntp</code>. Once installed, edit <code class="highlighter-rouge">/etc/ntp.conf</code> to reflect the following:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>
+&lt;snip&gt;
+
+# Use public servers from the pool.ntp.org project.
+# Please consider joining the pool (http://www.pool.ntp.org/join.html).
+server time.google.com iburst
+#server 0.centos.pool.ntp.org iburst
+#server 1.centos.pool.ntp.org iburst
+#server 2.centos.pool.ntp.org iburst
+#server 3.centos.pool.ntp.org iburst
+
+&lt;/snip&gt;
+
+</code></pre>
+</div>
+
+<p>Feel free to pick the NTP provider of your choice; I chose Google’s NTP service because they’ve been doing some pretty cool stuff to keep ahead of leap second issues (it’s also easy to remember but no more/no less reliable or better than any other choice). For more reading on this, see <a href="https://developers.google.com/time/smear">here</a>. For more background reading on UNIX time, see <a href="https://en.wikipedia.org/wiki/Unix_time">here</a> and <a href="https://www.youtube.com/watch?v=Uqjg8Kk1HXo">here</a> for a video overview of leap seconds and the potential for issues stemming from them.</p>
+
+<hr />
+
+<h3 id="conclusion">Conclusion</h3>
+
+<p>There’s not much of a conclusion to be made here, but it might need to be said that what we’ve done so far is not enough to get our blog on the internet for all of our adoring fans to see. In the next part of this series, we’ll set up Apache and a slew of other things in order to get our site up and running in a respectable manner.</p>

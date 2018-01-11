@@ -1,0 +1,264 @@
+<html>
+  <head>
+    <meta content='Web security and you, part two. - tminor.io' property='og:title' />
+    <title>Web security and you, part two. - tminor.io</title>
+    <link href='http://localhost:4000/images/fav.png' rel='shortcut icon'>
+<link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/style.css' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/syntax.css' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/responsive.css' rel='stylesheet' type='text/css' />
+<!-- - -->
+<script src='http://localhost:4000/javascripts/jquery.js' type='text/javascript'></script>
+<script src='http://localhost:4000/javascripts/pd.js' type='text/javascript'></script>
+<script src='http://localhost:4000/javascripts/basics.js' type='text/javascript'></script>
+<!--<script type="text/javascript" src="https://www.google.com/jsapi"></script>-->
+<!-- - -->
+<meta content='width=device-width, initial-scale=1.0, user-scalable=no' name='viewport'>
+<meta content='text/html; charset=utf-8' http-equiv='content-type' />
+<meta content="http://localhost:4000/og.png" property="og:image" />
+<meta content="" property="fb:app_id" />
+
+  <meta content='http://localhost:4000/2017/04/13/configure-security-headers/' property='og:url' />
+  <meta content="The saga continuesBefore getting into configuring Apache to accomodate secure response headers (which I&rsquo;ll save..." property='og:description' />
+  <meta content="article" property="og:type" />
+
+<!-- - -->
+<!--<script type='text/javascript'>
+  //<![CDATA[
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', '']);
+    _gaq.push(['_trackPageview']);
+    
+    (function() {
+      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+  //]]>
+</script>-->
+<script>(function(d, s, id) {
+  var js, fjs = d.getElementsByTagName(s)[0];
+  if (d.getElementById(id)) return;
+  js = d.createElement(s); js.id = id;
+  js.src = "//connect.facebook.net/en_GB/all.js#xfbml=1&appId=";
+  fjs.parentNode.insertBefore(js, fjs);
+}(document, 'script', 'facebook-jssdk'));</script>
+
+  </head>
+  <body>
+    <header>
+<a id="go-back-home" href="http://localhost:4000"><img src="http://localhost:4000/images/shebang.svg" alt="#!" width="53" height="59"></a>
+<p>tminor.io</p>
+</header>
+
+    <div id='container'>
+      <div class="block">
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/about">
+       About
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000https://blog.tminor.io">
+       Blog
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/feed.xml">
+       RSS
+     </a>
+  
+</div>
+      <section class="paging">
+  
+    <div class="left">
+      <a href="/2017/04/08/web-security-1/">
+        ‹
+      </a>
+    </div>
+  
+  
+    <div class="right">
+      <a href="/2017/04/20/syncthing/">
+        ›
+      </a>
+    </div>
+  
+</section>
+      <div class="content">
+        <section class='post'>
+          <h1 class="upcase">
+            <div class='date'>13 Apr 2017</div>
+            Web security and you, part two.
+          </h1>
+          <h3>The saga continues</h3>
+
+<p>Before getting into configuring Apache to accomodate secure response headers (which I&rsquo;ll save for the next post to avoid another lengthy post), I need to cover the Qualys SSL Report generated <a href="https://www.ssllabs.com/ssltest/analyze.html?d=blog.tminor.io">here</a>. I neglected to mention in my last post that if you&rsquo;re reading this in the not-so-distant future, all of these tests will probably (hopefully) return favorable results. In any case, I hope to outline how my site failed, why, and what implications underly its failure.</p>
+
+<hr>
+
+<h3>What&rsquo;s the point?</h3>
+
+<p>I understand that certificates are a necessary cog in the machine of secure web browsing. I&rsquo;ve watched <a href="https://www.youtube.com/watch?v=GSIDS_lvRv4">this Computerphile video</a> several times and it helped me to understand the whole process a bit more, but my depth of knowledge has remained, nonetheless, quite shallow.</p>
+
+<p>To better understand public key certificates, it&rsquo;s important to identify the problem that they are intended to solve. In simple terms, public key certificates are intended to establish a digital entity&rsquo;s identity and maintain data integrity using cryptography.</p>
+
+<p>One of the more easily understood examples of cryptography is a typical cereal box style decoder ring. These rings generally (always?) use affine encipherment which <a href="https://en.wikipedia.org/wiki/Affine_cipher">simply</a> means that alpha characters are encoded as their numerical equivalent (a → 1, b → 2, etc.). If two parties hope to share a secret using such a method, the parties must agree upon a predetermined shared secret. This is an example of symmetric key cryptography (a single key serves to encrypt <em>and</em> decrypt).</p>
+
+<p>With public key cryptography, two parties needn&rsquo;t share a secret to establish a secure means of communication. Public key cryptography is a cryptographic system that utilizes a key pair, one public and one private. Let&rsquo;s use Alice and Bob to illustrate how this works. Alice wants to send a private message to Bob but lives many miles away and can&rsquo;t meet Bob to exchange a shared secret. Thankfully, Bob already has a system set up and sends Alice his brand new public key. Alice uses Bob&rsquo;s key to encrypt a message and sends it off to him. Unfortunately, Eve intercepts the message, hoping to learn all of Alice and Bob&rsquo;s salacious secrets. Thankfully for Alice and Bob, Eve doesn&rsquo;t have the private key and therefore can&rsquo;t decrypt the message. Fantastic!</p>
+
+<p>Okay, so now we have a basic understanding of public key cryptography. Let&rsquo;s make explicit another implication presented in public key cryptography: given that Bob keeps his private key <em>private</em>, it can be used to prove his identity and the authenticity of his digital communications (and can be used to prove cryptographic <a href="http://world.std.com/%7Ecme/non-repudiation.htm">non-repudiation</a>). </p>
+
+<p><strong>X.509&hellip; or Public Key Infrastructure</strong></p>
+
+<p>So Bob has a public and private key and can establish his identitiy using a certificate containing his public key; how can we prove that Chuck—as a malicious actor—hasn&rsquo;t created a certificate in Bob&rsquo;s name? Well, in the hypothetical illustration above, we can&rsquo;t. This is where public key infratructure (PKI) comes in. PGP (as an example of a sort of <em>ad libitum</em> method of ensuring authenticity and data integrity) relies on a variation of PKI, but it utilizes a decentralized model to establish trust (like we saw with Alice and Bob earlier). This is not a bad thing, but it&rsquo;s not the method by which trust is established on the web (generally speaking). The Internet uses a centralized method to accomplish this. <a href="https://tools.ietf.org/html/rfc5280#page-8">RFC 5280</a> defines this in great detail; essentially, an entity requests a certificate using a cryptographic digital signature and a certificate is granted to that entity by a trusted authority using its signature. Here&rsquo;s a rough illustration of how the process might look from request to usage:</p>
+
+<ol>
+<li>An entity requests a certificate using a Certificate Signing Request (CSR).</li>
+<li>A Certificate Authority (CA) (such as Google, ISRG, etc.) receives the request and issues a certificate, given that the requester has sufficiently proven their identity.</li>
+<li>When a user agent (UA) receives the certificate, it checks against its trust store whether the certificate issuer is a valid one.</li>
+<li>If the UA finds that a certificate is self-signed or issued by a CA not contained within the trust store, the UA warns the user.</li>
+</ol>
+
+<p><strong>Transport Layer Security</strong></p>
+
+<p>Certificates are utilized on the Internet as a means of establishing secure communication via Transport Layer Security (TLS). TLS was preceded by Secure Sockets Layer (SSL) and is often colloquially (and confusingly) referred to as such. TLS brings together all of the concepts explored above: it is a protocol by which two applications can establish secure, private communication and ensure data integrity using symmetric cryptography. The easiest way to understand this is to walk through a typical TLS handshake between a client and server:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">CLIENT: ClientHello - message containing TLS/SSL options (cipher suite, TLS version, etc.)
+SERVER: ServerHello - server responds with chosen TLS/SSL options
+SERVER: Certificate - server&#39;s certificate chain sent to client
+SERVER: ServerHelloDone - server indicates completion of its part of negotiation
+CLIENT: ClientKeyExchange - client sends encrypted session key using server&#39;s public key
+CLIENT: ChangeCipherSpec - client intializes negotiated options for all future messages
+CLIENT: Finished - client asks server to verify negotiated options
+SERVER: ChangeCipherSpec - same as above, but enacted by the server
+SERVER: Finished - verification requested by server
+
+Encrypted application data can now be sent
+</code></pre></div>
+<p>As we can see, the server&rsquo;s certificate is used to both prove its identity and establish a secure channel of communication between itself and a client. To reiterate: a client makes a request to connect to a server; the server responds with its certificate containing its public key; the client uses the server&rsquo;s public key to encrypt a private session key that&rsquo;s generated client-side and that will be used to establish symmetric encryption; the client and server agree that the information they&rsquo;ve exchanged is correct and begin encrypted communication.</p>
+
+<hr>
+
+<h3>What does Qualys&rsquo;s SSL report tell us?</h3>
+
+<p>The report linked at the top of the post does several things: first, we&rsquo;re presented with basic information such as the validity dates, the common name, the issuer, etc. of each certificate. Here are some highlights with some basic explanation:</p>
+
+<blockquote>
+<p>Key:  RSA 2048 bits (e 65537)</p>
+</blockquote>
+
+<p>This attribute specifies the method used to obtain the public key; in this case, the key used was generated with <a href="https://tools.ietf.org/html/rfc3447">RSA</a> and is 2048 bits in length. An alternative to RSA is elliptic curve cryptography; I was curious to see the prominence of key types and found that both Facebook and Google seem to have used this method for key generation. Take a look at <a href="https://crypto.stackexchange.com/a/1194">this StackExchange answer</a> for more interesting discussion regarding RSA and EC.</p>
+
+<blockquote>
+<p>Extended Validation:  No</p>
+</blockquote>
+
+<p>Extended validation (EV) certificates involve a lengthier, more involved process for verifying the identity of an entity. To a user in front of a browser, this appears as a green bar, padlock, and the entity&rsquo;s legal name appearing next to the URL at the top of browser. Also, they are <a href="https://www.digicert.com/ev-price-comparison.htm">very expensive</a>.</p>
+
+<blockquote>
+<p>Certificate Transparency:     No</p>
+</blockquote>
+
+<p>Certificate Transparency is an experimental protocol for the logging of TLS certificate activity, allowing transparent auditing. I find it odd that this test failed, as Let&rsquo;s Encrypt advertises that they <a href="https://letsencrypt.org/certificates/">log all certificates upon issuance</a>. As an interesting side note, CT led to the <a href="https://groups.google.com/a/chromium.org/d/msg/blink-dev/eUAKwjihhBs/rpxMXjZHCQAJ">recent kerfuffle involving Google Chrome and Symantec</a>.</p>
+
+<blockquote>
+<p>OCSP Must Staple:     No</p>
+</blockquote>
+
+<p>OCSP stands for Online Certificate Status Protocol and is defined in RFC 6960 as &ldquo;a protocol useful in determining the current status of a digital certificate without requiring Certificate Revocation Lists (CRLs).&rdquo; If a private key is compromised, an attacker can intercept and impersonate the party to which the key originally belonged. The original entity can generate a new certificate, however the attacker can persist in impersonation. Originally when clients received a certificate from a host, they&rsquo;d check against previously retrieved CRLs; CRLs were generally handled poorly in the past <a href="https://news.netcraft.com/archives/2013/05/13/how-certificate-revocation-doesnt-work-in-practice.html">by browsers</a>. OCSP is an alternative that involves an additional check where a client requests a certificate&rsquo;s revocation status from the issuing CA. For more highly trafficked sites, this could cause an increased burden on infrastructure. OCSP stapling shifts the burden to the server to which a certificate belongs; the server contacts the issuing CA at regular intervals requesting revocation status and returns it to the client. OCSP Stapling has been plagued by <a href="https://www.grc.com/revocation/ocsp-must-staple.htm">its implementation</a> resulting in inconsistent deployment and adoption in browsers. OCSP Must Staple aims to solve the problem by adding a certificate extension that indicates that a respons MUST be stapled, otherwise the browser is to return a failure. This prevents attackers from skirting the return of a non-mandatory OCSP response. </p>
+
+<blockquote>
+<p>DNS CAA:  No</p>
+</blockquote>
+
+<p>Certificate Authority Authorization records are a type of DNS record that specify CAs authorized to issue certificates for a given domain. Before a certificate is issued, the CA performs a lookup to verify whether or not it is authorized. <a href="https://scotthelme.co.uk/certificate-authority-authorization/">As pointed out here</a>, it&rsquo;s not a perfect solution but adds yet another line of defense.</p>
+
+<p><strong>Configuration</strong></p>
+
+<p>The remainder of the report covers protocol and cipher suite support as well as vulnerability information. Among the list are two cipher suites both listed under TLS 1.0. This section also points out that my site may not be compatible with browsers that don&rsquo;t support SNI. Server Name Indication is an extension to TLS that involves the client indicating the host name intended for connection; this enables a single server to present several certificates via one IP address without using a single certificate (it is possible to list multiple domain names in a certificate&rsquo;s <code>subjectAltName</code> field, but the certificate must be reissued every time the list changes, rendering this strategy impractical).</p>
+
+<p><strong>Protocol details (END)</strong></p>
+
+<p>This section outlines quite a lot of information (a good bit of which I covered in the last post). One of the biggest detractors to my site&rsquo;s grade in this report is the fact that it&rsquo;s vulnerable to the POODLE attack (i.e. the site supports SSL 3.0). I would really like to write about POODLE, but I&rsquo;m afraid it&rsquo;s <a href="https://security.stackexchange.com/a/70724">quite a bit over my head</a>. Maybe some day (far in the future) I&rsquo;ll be able to understand it. For now, I&rsquo;ll call it quits. In the next post I&rsquo;ll finally get around to actually fixing all of this!</p>
+
+          <!--
+<br />
+<p>
+  Until next time,<br/>
+  Thomas
+  <span class="muted">at 22:40</span>
+</p>
+<p>
+  <img src="/images/blog.svg" alt="./blog.sh" width="70" height="40" /> 
+</p>
+-->
+
+
+        </section>
+      </div>
+      
+
+      
+        <div class="block">
+  <div id="disqus_thread"></div>
+    <script>
+      /**
+      *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+      *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+      */
+      /*
+      var disqus_config = function () {
+        this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+      };
+      */
+      (function() {  // DON'T EDIT BELOW THIS LINE
+        var d = document, s = d.createElement('script');
+
+        s.src = '//blog-tminor-io.disqus.com/embed.js';
+
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+      })();
+    </script>
+  <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+</div>
+
+      
+      <div class="block">
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/about">
+       About
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000https://blog.tminor.io">
+       Blog
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/feed.xml">
+       RSS
+     </a>
+  
+</div>
+    </div>
+    <!--
+<footer>
+  <a href="http://github.com/muan/scribble" class="muted">built with Jekyll using Scribble theme</a>
+  <br />
+  <br />
+  <img src="http://localhost:4000/images/eof.svg" alt="./blog.sh" width="40" height="27"/> 
+</footer>
+-->
+
+  </body>
+</html>

@@ -1,0 +1,131 @@
+<h3 id="introduction">Introduction</h3>
+
+<p>This post serves as a point of demarcation between completed steps and steps in progress. If you’re following along, installing OpenLDAP is step 4 as delineated <a href="https://www.reddit.com/r/linuxadmin/comments/2s924h/how_did_you_get_your_start/cnnw1ma/">here</a>. Everything up to this point was a challenge for me but certainly not insurmountbale. OpenLDAP, on the other hand, has been the most obtuse thing I’ve tackled so far. With some time, however, I was able to establish some steps that produced reliable results while setting OpenLDAP. It should be mentioned that this process uses self-signed certificates.</p>
+
+<hr />
+
+<p>Starting with a fresh VM with a CentOS 6 minimal image, install all of the packages necessary for running OpenLDAP:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo yum install openldap-clients pam_ldap nss-pam-ldapd pam_krb5 sssd migrationtools openldap-servers openldap openldap-devel
+</code></pre>
+</div>
+
+<p>Next, move <code class="highlighter-rouge">/etc/openldap/certs</code> and create a new certificate directory:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo mv /etc/openldap/certs{,_bak} &amp;&amp; sudo mkdir /etc/openldap/certs
+</code></pre>
+</div>
+
+<p>This directory will serve as the <code class="highlighter-rouge">moznss</code> certificate database for OpenLDAP. <code class="highlighter-rouge">certutil</code> is used to manage this directory; its analogues would be <code class="highlighter-rouge">openssl</code> and GnuTLS tools such as <code class="highlighter-rouge">certtool</code>. <code class="highlighter-rouge">moznss</code>’s effectiveness for OpenLDAP certificate management seems to be debatable. When browsing OpenLDAP lists while troubleshooting, I noticed many instances of OpenLDAP developers disparaging this method as buggy and inconsistent. Unfortunately for me, I decided to do it the Red Hat way and used the version available via Red Hat repositories.</p>
+
+<p>Prepare the directory for <code class="highlighter-rouge">certutil</code>:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ echo "&lt;password&gt;" &gt; password
+$ echo "&lt;type randomly&gt;" &gt;&gt; noise.txt
+</code></pre>
+</div>
+
+<p>The database needs a password; this database stores private keys, so “password” is probably not the best choice. Move the password file to the <code class="highlighter-rouge">certs</code> directory and associate it with the database:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo mv password /etc/openldap/certs/
+$ sudo certutil -N -d /etc/openldap/certs -f /etc/openldap/certs/password
+</code></pre>
+</div>
+
+<p>Generate a new key pair for the root certificate:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo certutil -G -d /etc/openldap/certs -z noise.txt -f /etc/openldap/certs/password
+</code></pre>
+</div>
+
+<p>Generate the root certificate:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo certutil -S -n "CA certificate" -s "cn=CAcert" -x -t "CT,," -m 1000 -v 120 -d /etc/openldap/certs -z noise.txt -f /etc/openldap/certs/password
+</code></pre>
+</div>
+
+<p>Use the newly created root certificate to sign and generate a certificate for the LDAP server:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo certutil -S -n "OpenLDAP Server" -s "cn=ldap1.example.com" -c "CA certificate" -t "u,u,u" -m 1001 -v 120 -d /etc/openldap/certs -z noise.txt -f /etc/openldap/certs/password
+</code></pre>
+</div>
+
+<p>Export the root certificate so that it can be used later:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo pk12util -d /etc/openldap/certs -o cacert.p12 -n "CA certificate"
+</code></pre>
+</div>
+
+<p>Keep in mind that this is the root certificate; keep it secure and use a good password to encrypt it. Export the CA certificate for use by LDAP clients:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo certutil -L -d /etc/openldap/certs -n "CA certificate" -a &gt; cacert.pem
+$ sudo mkdir /etc/openldap/cacerts &amp;&amp; sudo cp /etc/openldap/certs/cacert.pem /etc/openldap/cacerts/
+</code></pre>
+</div>
+
+<p>Make all files readable in the certificate database directory:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo chmod 644 /etc/openldap/certs/*
+</code></pre>
+</div>
+
+<p>Enable <code class="highlighter-rouge">ldaps://</code> by editing <code class="highlighter-rouge">/etc/sysconfig/ldap</code> with your favorite text editor:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>&lt;snip&gt;
+SLAPD_LDAPS=yes
+&lt;/snip&gt;
+</code></pre>
+</div>
+
+<p>Next, set up the LDAP database using the default configuration:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG
+$ sudo chown -Rf ldap:ldap /var/lib/ldap
+</code></pre>
+</div>
+
+<p>With the basics now set up and configured, start the <code class="highlighter-rouge">slapd</code> service (OpenLDAP’s daemon) and enable it on startup:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo service slapd start
+$ sudo chkconfig enable slapd
+</code></pre>
+</div>
+
+<p>With server-side configuration complete, configure client settings by running <code class="highlighter-rouge">authconfig-tui</code>. (The documentation for <code class="highlighter-rouge">authconfig-tui</code> reports that it is deprecated):</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>[*] Use LDAP
+[*] Use LDAP Authentication
+&lt;Next&gt;
+[*] Use TLS
+Server: ldap://ldapserver.localdomain/
+Base DN: dc=localdomain,dc=com
+</code></pre>
+</div>
+
+<p>Be sure to alter the above to reflect the actual domain name and domain components (dc=).</p>
+
+<p>OpenLDAP uses a client configuration file, <code class="highlighter-rouge">/etc/openldap/ldap.conf</code>. The default configuration file may work, however it may be necessary to add an additional configuration parameter (<code class="highlighter-rouge">TLS_REQCERT</code>) to enable StartTLS using a self-signed cert. Open up the client config file and append the following:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>TLS_REQCERT allow
+</code></pre>
+</div>
+
+<p>Now the server is ready to be tested. First, try an unencrypted search:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ ldapsearch -H ldap:// -x -s base -b "" -LLL "configContext"
+</code></pre>
+</div>
+<p>If successful, expect the following:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>dn:
+configContext: cn=config
+</code></pre>
+</div>
+
+<p>Once it’s verified that unencrypted searches are functioning properly, append the <code class="highlighter-rouge">-ZZ</code> option, forcing StartTLS. If the search fails, expect an error; if this is the case, append <code class="highlighter-rouge">-d -1</code> for debug output. In some cases, I found it necessary to regenerate the certs and cert database.</p>
+
+<hr />
+
+<h3 id="conclusion">Conclusion</h3>
+
+<p>The next post will cover setting up N-Way Multimaster replication.</p>

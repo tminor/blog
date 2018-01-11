@@ -1,0 +1,83 @@
+<h3 id="introduction">Introduction</h3>
+
+<p>In this series of blog posts, I’ll explain the steps that I took to create this site. First up: how to set up Jekyll, a static page generator. For more information and a better breakdown of what exactly static page generators bring to the table, see <a href="https://www.smashingmagazine.com/2015/11/static-website-generators-jekyll-middleman-roots-hugo-review/">this article</a>.</p>
+
+<hr />
+
+<h3 id="build-and-test-a-basic-jekyll-page">Build and test a basic Jekyll page</h3>
+
+<p>The steps from this section are lifted directly from <a href="http://jekyllrb.com/docs/home/">Jekyll’s documentation</a> but include some troubleshooting that I had to do in order to get everything working properly. The goal is to configure and serve a bare bones Jekyll page so that you can test it via your local computer’s web browser. In this guide, I’ll be using CentOS 7. Start by installing some packages with <code class="highlighter-rouge">yum</code> and RubyGems:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ yum install epel-release ruby ruby-devel rubygems gcc git
+$ gem install bundler jekyll
+</code></pre>
+</div>
+
+<p>Run <code class="highlighter-rouge">jekyll new &lt;blogdir&gt;</code>. This creates a default Jekyll blog directory with the following structure:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>.
+├── _config.yml
+├── _data
+|   └── members.yml
+├── _drafts
+├── _includes
+|   ├── footer.html
+|   └── header.html
+├── _layouts
+|   ├── default.html
+|   └── post.html
+├── _posts
+├── _sass
+|   ├── _base.scss
+|   └── _layout.scss
+├── _site
+├── .jekyll-metadata
+└── index.html
+</code></pre>
+</div>
+
+<p>At this point (after <code class="highlighter-rouge">cd</code>ing into the new Jekyll directory), the documentation instructs you to run <code class="highlighter-rouge">bundle exec jekyll serve</code> in order to serve up some fresh web page. Unfortunately for me, this generated an error:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>bundler: failed to load command: jekyll (/usr/local/bin/jekyll)
+LoadError: cannot load such file -- json
+  /home/fong/.gem/ruby/gems/jekyll-3.2.1/lib/jekyll/filters.rb:2:in `require'
+  /home/fong/.gem/ruby/gems/jekyll-3.2.1/lib/jekyll/filters.rb:2:in `&lt;top (required)&gt;'
+  /home/fong/.gem/ruby/gems/jekyll-3.2.1/lib/jekyll.rb:82:in `require'
+  /home/fong/.gem/ruby/gems/jekyll-3.2.1/lib/jekyll.rb:82:in `&lt;module:Jekyll&gt;'
+  /home/fong/.gem/ruby/gems/jekyll-3.2.1/lib/jekyll.rb:36:in `&lt;top (required)&gt;'
+  /home/fong/.gem/ruby/gems/jekyll-3.2.1/exe/jekyll:6:in `require'
+  /home/fong/.gem/ruby/gems/jekyll-3.2.1/exe/jekyll:6:in `&lt;top (required)&gt;'
+  /usr/local/bin/jekyll:23:in `load'
+  /usr/local/bin/jekyll:23:in `&lt;top (required)&gt;'
+</code></pre>
+</div>
+
+<p>After some googling, I found a solution that seemed to remedy the issue. Open up <code class="highlighter-rouge">~/&lt;blogdir&gt;/Gemfile</code> with your gavorite text editor and append the following line: <code class="highlighter-rouge">gem "json", "2.0.2"</code>. Follow that up by running two more commands:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ gem uninstall ffi
+$ gem install ffi --platform=ruby
+</code></pre>
+</div>
+
+<p>At this point I was able to run <code class="highlighter-rouge">bundle exec jekyll serve</code> without issue.</p>
+
+<hr />
+
+<h3 id="pick-a-theme-and-make-it-your-own">Pick a theme and make it your own</h3>
+
+<p>Jekyll enables the use of pre-created themes. You can find them in a variety of places; I found the theme that this site uses <a href="https://jekyllthemes.io/">here</a>.</p>
+
+<p>If your theme has a repository hosted on GitHub, you can clone the repository to a local directory:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ mkdir &lt;blogdir&gt; &amp;&amp; cd &lt;blogdir&gt;
+$ git clone https://github.com/username/scribble
+</code></pre>
+</div>
+
+<p>Once you’ve cloned the repository, you can run <code class="highlighter-rouge">bundle install</code> and <code class="highlighter-rouge">bundle exec jekyll serve</code> to view your webpage via your local browser by navigating to http://127.0.0.1:4000.</p>
+
+<hr />
+
+<h3 id="conclusion">Conclusion</h3>
+
+<p>At this point, you’d probably customize your theme a bit and start writing some content. You can author your posts by editing files within the <code class="highlighter-rouge">_posts</code> directory. In the next installment of this series, we’ll explore how to deploy and serve this new content via Capistrano and Apache on a VPS.</p>

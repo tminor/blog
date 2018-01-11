@@ -1,0 +1,1888 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>tminor.io</title>
+    <description></description>
+    <link>http://localhost:4000</link>
+    <atom:link href="http://localhost:4000/feed.xml" rel="self" type="application/rss+xml" />
+    
+      <item>
+        <title>A PowerShell script involving cyclists.</title>
+        <description>&lt;h2&gt;A little background&lt;/h2&gt;
+
+&lt;p&gt;I&amp;rsquo;ve been involved in a Fantasy Football league for the past few years, and each year the draft order has been decided in some inventive way. This year, an announcement was made that read as such:&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;The 2017 Canada Games Road Cycling - Male Criterium. It is truly an event that no one here will have an advantage in understanding. There are 45 bikers and everyone in the League will choose three. The HIGHEST FINISHER of your three will be your &lt;em&gt;official&lt;/em&gt; choice. Everyone&amp;rsquo;s official choice will decide the draft order.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Given that I&amp;rsquo;ve not had access to my homelab recently, I thought this might be a good opportunity to be productive and practice some scripting.&lt;/p&gt;
+
+&lt;hr&gt;
+
+&lt;h2&gt;Beggining with a rough idea&lt;/h2&gt;
+
+&lt;p&gt;The members of The League were provided with enough resources to locate the race participants; after finding the list I copied the text directly from the source page and stuck it in a text file that ended up looking something like this:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;Alexander Amiri         Cycling
+[British Columbia]  Brendan Armstrong   Cycling
+[Quebec]  Raphaël Auclair       Cycling
+[Ontario]  Tim Austen   Cycling
+[Saskatchewan]  Caleb Bender    Cycling
+[Manitoba]  Willem Boersma      Cycling
+[Prince Edward Island]  André Boudreau  Cycling
+[Saskatchewan]  Lukas Conly     Cycling
+[New Brunswick]  Alex Cormier   Cycling
+[Quebec]  Pier-André Côté       Cycling
+. . .
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Not being familiar with cycling, my first step was Googling; searching yielded a pretty decent result with &lt;a href=&quot;http://www.procyclingstats.com/&quot;&gt;Pro Cycling Stats&lt;/a&gt;. I tested the site by using some of the names as inputs to the site&amp;rsquo;s search function and found that a direct match for a name yielded that rider&amp;rsquo;s race results in a nicely formatted chart. I initially considered calculating average finishing position for each rider but quickly discarded the idea upon realizing that each race had a decently large variation in its number of participants. Ultimately, I envisioned taking the list as an input and producing as an output a ranked list of the race participants.&lt;/p&gt;
+
+&lt;h2&gt;Problem solving&lt;/h2&gt;
+
+&lt;p&gt;I needed a way to effeciently determine which riders were better than others. After a bit more exploration, I found that the site features a nifty &amp;ldquo;head-to-head&amp;rdquo; application/script that can compare any number of riders using a variety of statistics. Why devise a way to compare riders when you could just take advantage of something that already exists? It&amp;rsquo;s hard to know exactly what the application does in calculating each rider&amp;rsquo;s score, but I can safely assume that it&amp;rsquo;s more effective than anything I could devise.&lt;/p&gt;
+
+&lt;p&gt;After a bit of experimentation, I noticed that the application appears to use PHP&amp;rsquo;s &lt;code&gt;parse_url()&lt;/code&gt; (or something similar) to accept values via the URI:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;http://www.procyclingstats.com/rider.php?id=Tim_Ariesen&amp;amp;c=6&amp;amp;ids=170986,126972
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;I recognized this pattern from my earlier testing; a rider&amp;rsquo;s page uses a URI that conforms to the following scheme:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;http://www.procyclingstats.com/rider.php?id=170986
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;So I needed a way to collect riders&amp;rsquo; IDs and feed them to the &amp;ldquo;head-to-head&amp;rdquo; application. Thankfully, the search function also uses a very predictable URI scheme:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;http://www.procyclingstats.com/search.php?term=tim+ariesen&amp;amp;searchf=Search
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h2&gt;Taking names&lt;/h2&gt;
+
+&lt;p&gt;Using the list of names created earlier, we can generate an input for some kind of function that interacts with the search application. Before we get to that, we need to clean up the list so that each name can be cleanly passed to &lt;code&gt;search.php&lt;/code&gt;.&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;c&quot;&gt;# File containing the names of race participants&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$File&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&amp;quot;C:\Users\user\Desktop\cycles.txt&amp;quot;&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;# Get rider names&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;@()&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Get-Content&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Path&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$File&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-replace&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;(?=\[).*?(?=\])\]&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;&amp;#39;&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-replace&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;Cycling&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;&amp;#39;&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;trim&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-replace&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39; &amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;+&amp;#39;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;We begin by creating a variable for the text file containing the rider names. We then create another variable called &lt;code&gt;$Riders&lt;/code&gt; and tell PowerShell that we want it to be an empty array by using an empty array subexpression &lt;code&gt;@()&lt;/code&gt;. Generally, PowerShell is very good at guessing data types but sometimes it doesn&amp;rsquo;t get it right!&lt;/p&gt;
+
+&lt;p&gt;We then use the &lt;code&gt;Get-Content&lt;/code&gt; cmdlet to retrieve text from &lt;code&gt;cycles.txt&lt;/code&gt; and store it as the value of &lt;code&gt;$Riders&lt;/code&gt;. Next, we apply a series of regular expressions using the &lt;code&gt;-replace&lt;/code&gt; operator; the syntax is as follows:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;&amp;quot;operand string&amp;quot; -replace &amp;#39;match pattern&amp;#39;, &amp;#39;replace pattern&amp;#39;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;The match pattern uses regular expressions; our first regex replaces anything delimited by an opening and closing square bracket with an empty string; our second regex also replaces anything matching &lt;code&gt;Cycling&lt;/code&gt; with an empty string. Next, we use the &lt;code&gt;.Trim()&lt;/code&gt; method to rid each line of leading and trailing white space. Lastly, we replace any remaining spaces with a &lt;code&gt;+&lt;/code&gt;. After transformation, each line should conform to the following pattern:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;firstname+lastname
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h2&gt;Enter Invoke-WebRequest&lt;/h2&gt;
+
+&lt;p&gt;We now have all of the input we need to interact with Pro Cycling Stats&amp;rsquo;s &lt;code&gt;search.php&lt;/code&gt;; we can use a handy cmdlet called &lt;code&gt;Invoke-WebRequest&lt;/code&gt; to handle the interaction part. Running &lt;code&gt;Get-Help Invoke-WebRequest&lt;/code&gt; returns:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;DESCRIPTION
+    The Invoke-WebRequest cmdlet sends HTTP, HTTPS, FTP, and FILE requests to a web page or web service. It parses the response and returns collections of forms, links, images, and other significant HTML elements.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Wow, great!&lt;/p&gt;
+
+&lt;p&gt;Something important to understand about PowerShell is that it is &lt;a href=&quot;https://powertoe.wordpress.com/2014/04/26/you-know-powershell-is-an-object-oriented-language-right/&quot;&gt;object-oriented&lt;/a&gt;. With that in mind, we can assume that if we execute &lt;code&gt;Invoke-WebRequest&lt;/code&gt; as a subexpression, we can access its properties somehow. PowerShell uses &lt;code&gt;.&lt;/code&gt; as a property dereferencing operator; let&amp;rsquo;s use &lt;code&gt;Invoke-WebRequest&lt;/code&gt; to examine this behavior:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nb&quot;&gt;Invoke-WebRequest&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Uri&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;google&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;com&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Format-List&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;The outpute should look something like:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;StatusCode        : 200
+StatusDescription : OK
+Content           : &amp;lt;!doctype html&amp;gt;&amp;lt;html itemscope=&amp;quot;&amp;quot; itemtype=&amp;quot;http://schema.org/WebPage&amp;quot; lang=&amp;quot;en&amp;quot;&amp;gt;&amp;lt;head&amp;gt;&amp;lt;meta content=&amp;quot;Search the world&amp;#39;s information, including webpages, images, videos and more. Google has many speci...
+RawContent        : HTTP/1.1 200 OK
+                    X-XSS-Protection: 1; mode=block
+                    X-Frame-Options: SAMEORIGIN
+                    Vary: Accept-Encoding
+                    Transfer-Encoding: chunked
+                    Accept-Ranges: none
+                    Cache-Control: private, max-age=0
+                    Content-Type: ...
+Forms             : {f}
+. . .
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;We can see that one of the properties is &lt;code&gt;Links:&lt;/code&gt;, so we can look more closely by running:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nb&quot;&gt;Invoke-WebRequest&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Uri&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;google&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;com&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Select-Object&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Links&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Format-List&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;The output should be several lines of attribute-value pairs. Another cool thing about PowerShell (and maybe this is a cool thing about &lt;code&gt;Invoke-WebRequest&lt;/code&gt; specifically) is that you can access the values of these attributes in the same way you&amp;rsquo;d do it with an object (using subexpressions and the &lt;code&gt;.&lt;/code&gt; operator mentioned earlier):&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;Invoke-WebRequest&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Uri&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;google&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;com&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Links&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;outerHTML&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;h2&gt;Collecting IDs&lt;/h2&gt;
+
+&lt;p&gt;Using the strategy outlined above, we might be able to devise some way to corral links to each rider&amp;rsquo;s page. If we can do this, we can probably extract their ID as well.&lt;/p&gt;
+
+&lt;p&gt;Let&amp;rsquo;s go back to accessing the properties of our web request; with some knowledge of HTML, we can deduce that if we collect &lt;code&gt;href=&lt;/code&gt; values, we can probably find the links that contain our desired ID numbers. Let&amp;rsquo;s take a look at some example output by running the following:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;Invoke-WebRequest&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Uri&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&amp;quot;http://www.procyclingstats.com/search.php?term=tim+ariesen&amp;amp;searchf=Search&amp;quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Links&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Href&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;And the output:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;info.php?action=1502217039
+index.php?cookie=1&amp;amp;amp;SetCookieConsent=1
+http://www.procyclingstats.com/
+https://www.facebook.com/ProCyclingStats
+https://www.youtube.com/channel/UCpu35hcS3_1IlEb80aJem7Q
+https://twitter.com/ProCyclingStats
+http://www.procyclingstats.com/contact.php
+. . .
+?goto=rider&amp;amp;amp;id=170986&amp;amp;amp;rnk=0&amp;amp;amp;type=1&amp;amp;amp;title=search_page&amp;amp;amp;term=tim ariesen
+race.php?id=171047
+race.php?id=171088
+race.php?id=171127
+race.php?id=170996
+race.php?id=171007
+race.php?id=171015
+. . .
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;We can see that our output contains quite a few references to ID numbers that identify specific races and other non-rider entities. How do we determine which IDs belong to the riders we initially passed to &lt;code&gt;search.php&lt;/code&gt;? First, let&amp;rsquo;s corral the links we need.&lt;/p&gt;
+
+&lt;p&gt;Using our prepared rider names, we can iterate over them using a &lt;code&gt;foreach&lt;/code&gt; loop to execute some commands. So for each &lt;code&gt;$Rider&lt;/code&gt;, we want all &lt;code&gt;href=&lt;/code&gt; attributes and their corresponding values from the &lt;code&gt;Links:&lt;/code&gt; property of each web request. That would look something like:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;k&quot;&gt;foreach&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$Rider&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;$(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;Invoke-WebRequest&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Uri&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&amp;quot;http://www.procyclingstats.com/search.php?term=$Rider&amp;amp;searchf=Search&amp;quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Links&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Href&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;`&lt;/span&gt;
+    &lt;span class=&quot;nb&quot;&gt;Out-File&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-FilePath&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&amp;quot;C:\Users\user\Desktop\results.txt&amp;quot;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Append&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Notice that we&amp;rsquo;ve used the &lt;code&gt;$Rider&lt;/code&gt; variable to pass our rider names to &lt;code&gt;search.php&lt;/code&gt; and then piped it out to a file, appending each line along the way. This leaves us with a giant file containing every possible link for every rider fed to &lt;code&gt;search.php&lt;/code&gt;. Now we can begin to identify a salient characteristic that can be used to isolate each desired URI. With a little intuition, we can deduce that the lines we probably want contain a specific pattern: &lt;code&gt;rnk=0&lt;/code&gt;. How do we find and store the lines we want?&lt;/p&gt;
+
+&lt;p&gt;Let&amp;rsquo;s try starting with a variable and again tell PowerShell that we&amp;rsquo;d like it to be an empty array.&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$Results&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;@()&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Using the previously generated &lt;code&gt;results.txt&lt;/code&gt; file, we can get its content and select lines by matching against a regular expression:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$Results&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Get-Content&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Path&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;C&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Users&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;user&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Desktop&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;results&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;txt&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Select-String&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Pattern&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;.*(\brnk=0\b).*&amp;#39;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Select-Object&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-ExpandProperty&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;line&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Next, we need to whittle down our results so that we are left with the value of each &lt;code&gt;id=&lt;/code&gt; attribute; once again, we do this by using regular expressions. This time, however, we use a regular expression object!&lt;/p&gt;
+
+&lt;p&gt;We do this by creating a variable as we normally would but tell PowerShell that this particular object is a regular expression by type casting it as such:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;no&quot;&gt;[regex]&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$regex&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;id=[0-9]*&amp;#39;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;We can now take advantage of this object&amp;rsquo;s &lt;code&gt;.Match()&lt;/code&gt; method:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$Results&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$regex&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Matches&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$Results&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;ForEach&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;-Object&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$_&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;We mustn&amp;rsquo;t forget that our matches are also objects, so we pipe each match to &lt;code&gt;ForEach-Object&lt;/code&gt; and use an &lt;a href=&quot;https://docs.microsoft.com/en-us/powershell/module/Microsoft.PowerShell.Core/about_Automatic_Variables?view=powershell-5.1&quot;&gt;automatic variable&lt;/a&gt;; in our case, we use &lt;code&gt;$_&lt;/code&gt; to capture each matches &lt;code&gt;.Value&lt;/code&gt; property:&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;[$_] contains the current object in the pipeline object. You can use this variable in commands that perform an action on every object or on selected objects in a pipeline.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Now we can begin to isolate only the ID numbers and concatenate them to create a single string:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$Results&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$Results&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-replace&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;id=&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;&amp;#39;&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$IDString&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$Results&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-join&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;,&amp;#39;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;The first line should look familiar; the second uses the &lt;code&gt;-join&lt;/code&gt; operator to perform concatenation, using a &lt;code&gt;,&lt;/code&gt; as a delimiter for each ID number.&lt;/p&gt;
+
+&lt;h2&gt;Create your own object&lt;/h2&gt;
+
+&lt;p&gt;With our newly created ID string, we can now interact with &lt;code&gt;rider.php&lt;/code&gt;&amp;lsquo;s &amp;ldquo;head-to-head&amp;rdquo; function.&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$WebRequest&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Invoke-WebRequest&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Uri&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&amp;quot;http://www.procyclingstats.com/rider.php?id=Tim_Ariesen&amp;amp;c=6&amp;amp;ids=$IDString&amp;quot;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;We also need to create another empty array:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$RiderObjects&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;@()&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;We&amp;rsquo;ll cover that in a little bit.&lt;/p&gt;
+
+&lt;p&gt;With that out of the way, we can begin to concoct a way to handle the content retrieved by &lt;code&gt;$WebRequest&lt;/code&gt;. By examining the source of the &amp;ldquo;head-to-head&amp;rdquo; page, we notice that each rider&amp;rsquo;s name and respective score are contained within a &lt;code&gt;&amp;lt;div&amp;gt;&lt;/code&gt; HTML element. Based on our experience so far, we know that we can probably capture the values we want using regular expressions. So here&amp;rsquo;s the regular expression we&amp;rsquo;ll use:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;&amp;lt;div style=&amp;quot;font: bold 20px tahoma, arial, Century Gothic; letter-spacing: -1px; &amp;quot;&amp;gt;([a-zA-z]*)&amp;lt;br \/&amp;gt;([a-zA-z]*)&amp;lt;\/div&amp;gt;&amp;lt;div style=&amp;quot;font: bold 18px tahoma, arial, Century Gothic; letter-spacing: -1px; padding: 9px 0; color: #e00; &amp;quot;&amp;gt;([0-9]*\.[0-9]*%)&amp;lt;\/div&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;With the above regular expression, we use three capture groups: first name, last name, and score. We can use these values as properties in a custom object. Here&amp;rsquo;s how we&amp;rsquo;d do that:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$regex&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Matches&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$WebRequest&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Content&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;ForEach&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;-Object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;$objRider&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;New-Object&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;psobject&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Property&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;@{&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;Name&lt;/span&gt;  &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&amp;quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;$(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$_&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Groups&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;].&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;$(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$_&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Groups&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;].&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&amp;quot;&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;Score&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;[decimal]&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;$(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$_&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Groups&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;].&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Replace&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;&amp;#39;%&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;&amp;#39;&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;$Global:RiderObjects&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;+=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$objRider&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;First, we start with our &lt;code&gt;$regex&lt;/code&gt; object and use the &lt;code&gt;.Matches()&lt;/code&gt; method using &lt;code&gt;$WebRequest&lt;/code&gt;&amp;rsquo;s &lt;code&gt;Content&lt;/code&gt; property (which happens to be raw HTML) as input. Next, we pipe the output to a &lt;code&gt;ForEach-Object&lt;/code&gt; loop that creates a new object called &lt;code&gt;$objRider&lt;/code&gt; for each match. Again, we use the &lt;code&gt;$_&lt;/code&gt; automatic variable and the &lt;code&gt;.&lt;/code&gt; property dereference operator to access each capture group. The &amp;ldquo;Name&amp;rdquo; property is straightforward; we take capture groups &lt;code&gt;1&lt;/code&gt; and &lt;code&gt;2&lt;/code&gt; and concatenate them into one string. For the &amp;ldquo;Score&amp;rdquo; property, we need to perform some manipulation so that we can properly sort them numerically (otherwise, PowerShell would assume that the percentage number is a string and sort it alphabetically). We do this by type casting the value for &amp;ldquo;Score&amp;rdquo; as &lt;code&gt;[decimal]&lt;/code&gt;, call the &lt;code&gt;.Replace()&lt;/code&gt; method, replacing &lt;code&gt;%&lt;/code&gt; with an empty string, all within a subexpression that returns the resultant value as a float (or decimal).&lt;/p&gt;
+
+&lt;p&gt;Once we&amp;rsquo;ve successfully created our object, we use the assignment by addition operator &lt;code&gt;+=&lt;/code&gt; to append the object to an empty array, &lt;code&gt;$Global:RiderObjects&lt;/code&gt;. We tell PowerShell that this variable should be accessible in the global scope so that we can use it outside the scope of the &lt;code&gt;ForEach-Object&lt;/code&gt; loop.&lt;/p&gt;
+
+&lt;p&gt;With our newly created objects, we can now manipulate the results as we would any other object.&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$RiderObjects&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Sort-Object&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Score&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Descending&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Output:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;Name              Score
+----              -----
+Joseph Didden      13.0
+Tim Ariesen         6.8
+Nicolas Zukowsky    5.2
+Kurt Penno          2.1
+Jordann Jones       1.2
+Willem Boersma      0.9
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;hr&gt;
+
+&lt;h2&gt;Final thoughts&lt;/h2&gt;
+
+&lt;p&gt;One thing I didn&amp;rsquo;t control for was false positives; the person who scored the highest, for example, only participated in one race that took place in 1939. Another example is that Tim Ariesen isn&amp;rsquo;t participating in the race we care about. I have some ideas as to how I might account for such aberrations, but it was a fun exercise nevertheless. As an outro, here&amp;rsquo;s the script in aggregate:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;c&quot;&gt;# File containing the names of race participants&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$File&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&amp;quot;C:\Users\tminor\Desktop\cycles.txt&amp;quot;&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;# Get rider names&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;@()&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Get-Content&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Path&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$File&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-replace&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;(?=\[).*?(?=\])\]&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;&amp;#39;&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-replace&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;Cycling&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;&amp;#39;&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;trim&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-replace&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39; &amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;+&amp;#39;&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;# After some manipulation, use rider names to search www.procyclingstats.com&lt;/span&gt;
+&lt;span class=&quot;c&quot;&gt;# Store all output in a file&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;foreach&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$Rider&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$Riders&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;$(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;Invoke-WebRequest&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Uri&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&amp;quot;http://www.procyclingstats.com/search.php?term=$Rider&amp;amp;searchf=Search&amp;quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Links&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Href&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;`&lt;/span&gt;
+    &lt;span class=&quot;nb&quot;&gt;Out-File&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-FilePath&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&amp;quot;C:\Users\tminor\Desktop\results.txt&amp;quot;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Append&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;# Read the file generated above and store all matching lines in an array&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Results&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;@()&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Results&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Get-Content&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Path&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;C&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;:&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Users&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;tminor&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Desktop&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;results&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;txt&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Select-String&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Pattern&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;.*(\brnk=0\b).*&amp;#39;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Select-Object&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-ExpandProperty&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;line&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;# Determine rider IDs by extracting them from URIs with an ID regex&lt;/span&gt;
+&lt;span class=&quot;no&quot;&gt;[regex]&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$Regex&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;id=[0-9]*&amp;#39;&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Results&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$regex&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Matches&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$Results&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;ForEach&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;-Object&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$_&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;# Store only the ID number&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Results&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$Results&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-replace&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;id=&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;&amp;#39;&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;# Concat all ID numbers to use in URI to compare riders&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$IDString&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$Results&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-join&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;,&amp;#39;&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$WebRequest&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Invoke-WebRequest&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Uri&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&amp;quot;http://www.procyclingstats.com/rider.php?id=Chris MacLeod&amp;amp;c=6&amp;amp;ids=$IDString&amp;quot;&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;# Initialize new array for custom object&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$RiderObjects&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;@()&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;# Use regex to capture all relevant data&lt;/span&gt;
+&lt;span class=&quot;no&quot;&gt;[regex]&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$Regex&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;&amp;#39;&amp;lt;div style=&amp;quot;font: bold 20px tahoma, arial, Century Gothic; letter-spacing: -1px; &amp;quot;&amp;gt;([a-zA-z]*)&amp;lt;br \/&amp;gt;([a-zA-z]*)&amp;lt;\/div&amp;gt;&amp;lt;div style=&amp;quot;font: bold 18px tahoma, arial, Century Gothic; letter-spacing: -1px; padding: 9px 0; color: #e00; &amp;quot;&amp;gt;([0-9]*\.[0-9]*%)&amp;lt;\/div&amp;gt;&amp;#39;&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;# Iterate over regex matches, creating a custom object &lt;/span&gt;
+&lt;span class=&quot;c&quot;&gt;# For each match, add each capture group to its respective object attribute&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Regex&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Matches&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$WebRequest&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Content&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;ForEach&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;-Object&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;$ObjRider&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;New-Object&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;psobject&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Property&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;@{&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;Name&lt;/span&gt;  &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&amp;quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;$(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$_&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Groups&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;].&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt; &lt;/span&gt;&lt;span class=&quot;p&quot;&gt;$(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$_&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Groups&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;].&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&amp;quot;&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;Score&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;no&quot;&gt;[decimal]&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;$(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$_&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Groups&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;].&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Replace&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;&amp;#39;%&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;&amp;#39;&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+    &lt;span class=&quot;nv&quot;&gt;$Global:RiderObjects&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;+=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$ObjRider&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;# Sort the custom object by score in descending order&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$RiderObjects&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Sort-Object&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Score&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;-Descending&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;&lt;strong&gt;UPDATE:&lt;/strong&gt; My final draft position is second from last. I experienced a glimmer of hope when the time trials performed by the same group of riders yielded a first place finish for me, but alas, the taste of victory is bitter-sweet.&lt;/p&gt;
+</description>
+        <pubDate>Fri, 18 Aug 2017 21:09:37 -0400</pubDate>
+        <link>http://localhost:4000/2017/08/18/a-little-powershell/</link>
+        <guid isPermaLink="true">http://localhost:4000/2017/08/18/a-little-powershell/</guid>
+      </item>
+    
+      <item>
+        <title>How to pass some web security tests.</title>
+        <description>&lt;h2&gt;&amp;ldquo;Previously on how to do web security&amp;hellip;&amp;rdquo;&lt;/h2&gt;
+
+&lt;p&gt;A few posts ago, we learned some stuff about HTTP security headers and TLS certificates; in today&amp;rsquo;s post, we&amp;rsquo;ll finally get around to configuring Apache on CentOS to shore up our HTTP response headers. When I started writing this post, I intended to cover the configuration of all previously detailed headers; instead, I&amp;rsquo;m going to limit this post to an intro and two headers: HSTS and CSP.&lt;/p&gt;
+
+&lt;hr&gt;
+
+&lt;h2&gt;Apache and headers&lt;/h2&gt;
+
+&lt;p&gt;Before we dive into the configuration process—which is pretty simple—we should understand on a basic level how &lt;code&gt;httpd&lt;/code&gt; handles configuration. More specifically, we&amp;rsquo;ll look at virtual host configuration and how headers are controlled by Apache. Let&amp;rsquo;s begin with virtual hosts.&lt;/p&gt;
+
+&lt;h3&gt;Virtual hosts&lt;/h3&gt;
+
+&lt;p&gt;Virtual hosting refers to a method for hosting multiple sites on a single machine running a web server. Here&amp;rsquo;s an illustration: a server receives a connection for an address and port; if a match exists for the request, the server responds. In the case that a virtual host exists, the server must determine whether it should match based on an IP address (IP-based virtuals host); if so, the server fulfills the request with the page at that address. In the case that multiple virtual hosts exist for a given address and port, the server must match the virtual host based on the name indicated either at the beginning of a TLS handshake using Server Name Indication (&lt;a href=&quot;https://en.wikipedia.org/wiki/Server_Name_Indication&quot;&gt;SNI&lt;/a&gt;) or with &lt;code&gt;httpd&lt;/code&gt; where the first listed virtual host configuration block matches the request.&lt;/p&gt;
+
+&lt;p&gt;Each virtual host is defined using a &lt;code&gt;&amp;lt;VirtualHost&amp;gt;&lt;/code&gt; directive that is contained within &lt;code&gt;httpd&lt;/code&gt;&amp;lsquo;s main config file or in separate config files; the separate config files and their locations depend upon the distribution from whence &lt;code&gt;httpd&lt;/code&gt;&amp;rsquo;s package came. For details on this, see &lt;a href=&quot;https://wiki.apache.org/httpd/DistrosDefaultLayout&quot;&gt;Apache&amp;rsquo;s documentation&lt;/a&gt; on the matter. (For some reason I adopted the Debian way–this was mostly out of ignorance, but I like it well enough.)&lt;/p&gt;
+
+&lt;h3&gt;A little about .htaccess&lt;/h3&gt;
+
+&lt;p&gt;One way to configure a web site is to alter the corresponding &lt;code&gt;&amp;lt;VirtualHost&amp;gt;&lt;/code&gt; directive within its config file; another way to accomplish this is to use a file called &lt;code&gt;.htaccess&lt;/code&gt;. &lt;code&gt;.htaccess&lt;/code&gt; is located in a web site&amp;rsquo;s document root (or any other directory). When Apache loads the directory housing the content being retrieved, it knows to read &lt;code&gt;.htaccess&lt;/code&gt;. One thing to to note:&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;You should avoid using .htaccess files completely if you have access to httpd main server config file. Using .htaccess files slows down your Apache http server. Any directive that you can include in a .htaccess file is better set in a Directory block, as it will have the same effect with better performance.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;That&amp;rsquo;s directly from Apache&amp;rsquo;s documentation. I don&amp;rsquo;t think this matters much, especially if you are hosting your site on modern computers. With larger web sites, this may matter a little more.&lt;/p&gt;
+
+&lt;h3&gt;mod_headers&lt;/h3&gt;
+
+&lt;p&gt;Apache provides a relatively limited set of functionality by default; however, it also provides extensibility through the use of modules. Common modules include examples such as &lt;code&gt;mod_ssl&lt;/code&gt;, &lt;code&gt;mod_proxy&lt;/code&gt;, and &lt;code&gt;mod_perl&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;mod_headers&lt;/code&gt; can be used to control HTTP headers. The syntax for header directives is as follows:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;Header [condition] add|append|echo|edit|edit*|merge|set|setifempty|unset|note header [[expr=]value [replacement] [early|env=[!]varname|expr=expression]]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Header directives need only conform to the above syntax and can be specified in a site&amp;rsquo;s virtual host config file or &lt;code&gt;.htaccess&lt;/code&gt;; this means that the sky (or your imagination) is the limit when it comes to setting header fields and their values. Check out an HTTP response from Zappos:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ curl -I zappos.com
+
+. . .
+Connection: keep-alive
+Location: http://www.zappos.com/
+X-Core-Value: 3. Create Fun and A Little Weirdness
+X-Recruiting: If you&amp;#39;re reading this, maybe you should be working at Zappos instead.  Check out jobs.zappos.com
+. . .
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Back to business. To set an HSTS response header, we need to recall the directives specified in RFC 6797, found &lt;a href=&quot;https://tools.ietf.org/html/rfc6797#section-6.1&quot;&gt;here&lt;/a&gt;. They are &lt;code&gt;max-age&lt;/code&gt; and &lt;code&gt;includeSubDomains&lt;/code&gt;. In addition, many sites use the &lt;code&gt;preload&lt;/code&gt; directive; I couldn&amp;rsquo;t find &lt;code&gt;preload&lt;/code&gt; documented in the RFC or in any official capacity elsewhere, so my guess is that it&amp;rsquo;s a &lt;em&gt;de facto&lt;/em&gt; standard as implemented by all modern browsers. See &lt;a href=&quot;https://blog.tminor.io/2017/04/08/web-security-1/&quot;&gt;my previous blog post&lt;/a&gt; to read more about HSTS and preload lists.&lt;/p&gt;
+
+&lt;h3&gt;Configure HSTS&lt;/h3&gt;
+
+&lt;p&gt;Given the syntax above, let&amp;rsquo;s build a proper directive specifying &lt;code&gt;strict-transport-security&lt;/code&gt;. We know that the directive will begin with &lt;code&gt;Header&lt;/code&gt;, so that seems like a reasonable start. Next, we must (optionally) choose a &lt;em&gt;condition&lt;/em&gt;. Conditions can be used to granularly control how a server handles response headers; as an example, the server may remove a header given a specified HTTP status code. In our case, we want to assign the value &lt;em&gt;always&lt;/em&gt; to this parameter. Absent this value, our server will only respond with the &lt;code&gt;strict-transport-security&lt;/code&gt; header on a successful response. Our next argument will be a value from the list above; Apache&amp;rsquo;s documentation contains the following line:&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;For set, append, merge and add a value is specified as the next argument.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Well, we certainly want to specify some values so we have our choices narrowed down. &lt;code&gt;append&lt;/code&gt; and &lt;code&gt;merge&lt;/code&gt; can be excluded, and upon reading the description of &lt;code&gt;add&lt;/code&gt; we see that &lt;code&gt;set&lt;/code&gt; is probably the value we&amp;rsquo;re looking for. So we shall set some values for the directives we specified in the last section: &lt;code&gt;max-age&lt;/code&gt;, &lt;code&gt;includeSubdomains&lt;/code&gt;, and &lt;code&gt;preload&lt;/code&gt; (really we only need to assign an integer value for &lt;code&gt;max-age&lt;/code&gt; as the others are essentially boolean).&lt;/p&gt;
+
+&lt;p&gt;HSTS can utilize multiple directives; I was unable to find any explicit coverage of how to handle this in Apache&amp;rsquo;s documentation. My guess is that Apache assumes that an administrator should know that &lt;code&gt;httpd&lt;/code&gt; responds with headers exactly how they&amp;rsquo;re written in a config file and that an administrator should also be familiar with proper header syntax; after all, most (all?) RFCs on the subject of HTTP probably contain the following Augmented Backus-Naur Form syntax (ABNF) table:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;Strict-Transport-Security = &amp;quot;Strict-Transport-Security&amp;quot; &amp;quot;:&amp;quot;
+                            [ directive ]  *( &amp;quot;;&amp;quot; [ directive ] )
+
+     directive            = directive-name [ &amp;quot;=&amp;quot; directive-value ]
+     directive-name       = token
+     directive-value      = token | quoted-string
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;This syntax is covered in great detail in &lt;a href=&quot;https://tools.ietf.org/html/rfc2616#section-2&quot;&gt;RFC 2616&lt;/a&gt;. As we see above, each directive (or token in RFC parlance [though I think token is a broader term]) is separated by a semicolon. Also note that the HSTS directives are bookended by double-quotes. (After reading parts of RFCs 6797 and 2616, I think that Apache does some magic on the vhost header directive to make it conformant to specifications. Anyway, on to the final product.)&lt;/p&gt;
+
+&lt;p&gt;Let&amp;rsquo;s put the above information together to form a coherent HSTS header directive for our vhost configuration:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;Header set Strict-Transport-Security &amp;quot;max-age=31415926; includeSubDomains&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;I personally decided to exclude &lt;code&gt;preload&lt;/code&gt; as I don&amp;rsquo;t think it&amp;rsquo;s really necessary in my case (and I don&amp;rsquo;t want to break anything if I mess something up). Most documentation available on the Internet indicates that some caution should be taken with the &lt;code&gt;preload&lt;/code&gt; directive. Scott Helme &lt;a href=&quot;https://scotthelme.co.uk/hsts-cheat-sheet/#preload&quot;&gt;gives good reasons&lt;/a&gt; for why you may not want to go this route. To have your site included in the preload list, you can add it &lt;a href=&quot;https://hstspreload.org/&quot;&gt;here&lt;/a&gt;.&lt;/p&gt;
+
+&lt;h3&gt;Content-security-policy&lt;/h3&gt;
+
+&lt;p&gt;Now that we know how to create vhost header directives, we can jump right into picking the proper values for &lt;code&gt;content-security-policy&lt;/code&gt;. Let&amp;rsquo;s take a look at CSP&amp;rsquo;s use in the wild by running &lt;code&gt;curl -I https://mobile.twitter.com&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;. . .
+content-security-policy: 
+    default-src &amp;#39;self&amp;#39;; 
+    connect-src &amp;#39;self&amp;#39;; 
+    font-src &amp;#39;self&amp;#39; data:; 
+    frame-src https://twitter.com https://*.twitter.com https://*.twimg.com twitter: https://www.google.com https://5415703.fls.doubleclick.net; 
+    img-src https://twitter.com https://*.twitter.com https://*.twimg.com https://maps.google.com https://www.google-analytics.com https://stats.g.doubleclick.net https://www.google.com https://ad.doubleclick.net data:; 
+    media-src https://*.twitter.com https://*.twimg.com https://*.cdn.vine.co; 
+    object-src &amp;#39;self&amp;#39;; 
+    script-src &amp;#39;unsafe-inline&amp;#39; &amp;#39;unsafe-eval&amp;#39; https://*.twitter.com https://*.twimg.com https://www.google.com https://www.google-analytics.com https://stats.g.doubleclick.net; 
+    style-src &amp;#39;unsafe-inline&amp;#39; https://*.twitter.com https://*.twimg.com; 
+    report-uri https://twitter.com/i/csp_report?a=O5SWEZTPOJQWY3A%3D&amp;amp;ro=false;
+. . .
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;A quick glance shows a pretty standard whitelisting style; the example uses many of the most common source control directives such as &lt;code&gt;object-src&lt;/code&gt; and &lt;code&gt;script-src&lt;/code&gt;. According to most instructions and common practice, this is how most CSP directive lists would look.&lt;/p&gt;
+
+&lt;p&gt;While doing some research for this post I ran across a &lt;a href=&quot;https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/45542.pdf&quot;&gt;paper&lt;/a&gt; that covers CSP in thorough detail; I highly recommend it. In the paper, the authors examine usage of CSP across the Internet and conclude that—in the vast majority of cases—CSP is largely ineffective in mitigating XSS; note, however, that the reasons given by the authors for ineffectiveness generally stem from slight misconfigurations and improperly used directives. As a point of reference, the authors consider wildcard usage in whitelists to be inherently insecure as it allows for inclusion of content from arbitrary hosts.&lt;/p&gt;
+
+&lt;p&gt;When building a proper CSP whitelist, it is often necessary to conduct a thorough audit of web pages and content that CSP is designed to control. It shouldn&amp;rsquo;t be surprising that in many cases CSP whitelists are left incomplete or generally cause unforeseen issues. A suggested method for rolling out CSP is by using &lt;code&gt;Content-Security-Policy-Report-Only&lt;/code&gt; and specifying whitelists but only reporting infractions and not blocking content. When Twitter began using CSP in 2011, their engineering team &lt;a href=&quot;https://blog.twitter.com/2011/improving-browser-security-with-csp&quot;&gt;discovered&lt;/a&gt; quite a bit about their infrastructure using this method (you can find another example of rolling out CSP in &lt;a href=&quot;https://blogs.dropbox.com/tech/tag/content-security-policy/&quot;&gt;this series of posts on DropBox&amp;rsquo;s tech blog&lt;/a&gt;). Even in Twitter&amp;rsquo;s case, however, the CSP we saw above fails at least one of the checks presented in section 3.3.5 of the aforementioned paper. You can check for yourself by using &lt;a href=&quot;https://csp-evaluator.withgoogle.com/&quot;&gt;this handy tool&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;Thankfully, the authors present an alternative method for utilizing CSP:&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Instead of relying on whitelists, application maintainers should apply a nonce-based protection approach.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;A nonce-based policy uses &lt;a href=&quot;https://en.wikipedia.org/wiki/Cryptographic_nonce&quot;&gt;nonces&lt;/a&gt; (surprising!) to validate loaded or inline scripts. An example policy would appear as follows:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;Content-Security-Policy:
+    script-src ’nonce-random123’
+    default-src ’none’
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;The HTML script tag that accompanies the above policy would assert the specified nonce:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-html&quot; data-lang=&quot;html&quot;&gt;&lt;span class=&quot;nt&quot;&gt;&amp;lt;script &lt;/span&gt;&lt;span class=&quot;na&quot;&gt;nonce=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;random123&amp;quot;&lt;/span&gt;
+    &lt;span class=&quot;na&quot;&gt;src=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;https://example.org/script.js?callback=foo&amp;quot;&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;/script&amp;gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;The proposed method presents a challenge in that code would need to be refactored, but not extensively. The authors also suggest that nonce-based policies don&amp;rsquo;t account for pages that use code that is dynamically generated. The authors go on to propose an addition to CSP in the form of an additional &lt;code&gt;script-src&lt;/code&gt; expression that they call &lt;code&gt;&amp;#39;strict-dynamic&amp;#39;&lt;/code&gt; that accomodates such instances. &lt;code&gt;&amp;#39;strict-dynamic&amp;#39;&lt;/code&gt; is included in CSP3, which is &lt;a href=&quot;https://www.w3.org/TR/CSP/#strict-dynamic-usage&quot;&gt;currently in draft form&lt;/a&gt; and is—according to the authors—implemented in current versions of Chrome and Opera. (I noticed that &lt;code&gt;&amp;#39;script-dynamic&amp;#39;&lt;/code&gt; is included on the &lt;a href=&quot;https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src#strict-dynamic&quot;&gt;Mozilla Developer Network&lt;/a&gt;, but I couldn&amp;rsquo;t find a definitive answer to whether it&amp;rsquo;s supported in the latest versions of Firefox.)&lt;/p&gt;
+
+&lt;p&gt;For more extensive information about CSP best practice according to Google, see &lt;a href=&quot;https://csp.withgoogle.com/docs/index.html&quot;&gt;this page&lt;/a&gt;.&lt;/p&gt;
+
+&lt;h4&gt;Creating a Nonce-based Policy&lt;/h4&gt;
+
+&lt;p&gt;We need to know a few more details before we implement a nonce-based policy. Nonces are dynamically generated, meaning that a new nonce is created every time a page is requested and is inserted into every script element. This can be done a million different ways; here I&amp;rsquo;ll demonstrate how this could possibly be done with PHP and Apache.&lt;/p&gt;
+
+&lt;p&gt;Let&amp;rsquo;s assume that Apache knows about our site and that it can at least display a basic HTML document; outside of that, Apache doesn&amp;rsquo;t know how we want it to handle files with a &lt;code&gt;.php&lt;/code&gt; extension. Let&amp;rsquo;s change that by opening up &lt;code&gt;httpd&lt;/code&gt;&amp;rsquo;s main config file, &lt;code&gt;/etc/httpd/conf/httpd.conf&lt;/code&gt;, and append the following:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;&amp;lt;FilesMatch &amp;quot;\.ph(p[2-6]?|tml)$&amp;quot;&amp;gt;
+    SetHandler application/x-httpd-php
+&amp;lt;/FilesMatch&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Restart &lt;code&gt;httpd&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;With that done, let&amp;rsquo;s create a basic &lt;code&gt;.php&lt;/code&gt; file in the site&amp;rsquo;s document root (&lt;code&gt;/var/www/example.com/public_html/test.php&lt;/code&gt;):&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-html&quot; data-lang=&quot;html&quot;&gt;&lt;span class=&quot;cp&quot;&gt;&amp;lt;!DOCTYPE HTML&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;html&amp;gt;&lt;/span&gt;
+
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;body&amp;gt;&lt;/span&gt;
+  &lt;span class=&quot;nt&quot;&gt;&amp;lt;script&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nb&quot;&gt;document&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;write&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;6&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;7&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+  &lt;span class=&quot;nt&quot;&gt;&amp;lt;/script&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;/body&amp;gt;&lt;/span&gt;
+
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;/html&amp;gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;If we navigate to our test page, we should see &amp;#39;42&amp;rsquo; printed in the top left corner of the browser window. Great!&lt;/p&gt;
+
+&lt;p&gt;Now let&amp;rsquo;s add some PHP at the top of the file to generate a nonce:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-php&quot; data-lang=&quot;php&quot;&gt;&lt;span class=&quot;cp&quot;&gt;&amp;lt;?php&lt;/span&gt;
+  &lt;span class=&quot;nv&quot;&gt;$nonce&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;exec&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;&amp;#39;openssl rand -base64 32&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+  &lt;span class=&quot;nb&quot;&gt;header&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&amp;quot;Content-Security-Policy: script-src &amp;#39;nonce-&amp;quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$nonce&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&amp;quot;&amp;#39;&amp;quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;cp&quot;&gt;?&amp;gt;&lt;/span&gt;&lt;span class=&quot;x&quot;&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;I&amp;rsquo;m sure a nonce could be natively generated in PHP; instead of figuring out how to do that, I gave in to laziness and used PHP&amp;rsquo;s &lt;code&gt;exec()&lt;/code&gt; function to call &lt;code&gt;openssl&lt;/code&gt; to generate a random value for the variable &lt;code&gt;$nonce&lt;/code&gt;. After generating the value, we then use PHP&amp;rsquo;s &lt;code&gt;header()&lt;/code&gt; function to send our nonce in a properly formatted CSP header string.&lt;/p&gt;
+
+&lt;p&gt;Let&amp;rsquo;s add this to our simple &lt;code&gt;test.php&lt;/code&gt; file:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-html&quot; data-lang=&quot;html&quot;&gt;&lt;span class=&quot;cp&quot;&gt;&amp;lt;?php&lt;/span&gt;
+&lt;span class=&quot;cp&quot;&gt;  $nonce = exec(&amp;#39;openssl rand -base64 32&amp;#39;);&lt;/span&gt;
+&lt;span class=&quot;cp&quot;&gt;  header(&amp;quot;Content-Security-Policy: script-src &amp;#39;nonce-&amp;quot;.$nonce.&amp;quot;&amp;#39;&amp;quot;);&lt;/span&gt;
+&lt;span class=&quot;cp&quot;&gt;?&amp;gt;&lt;/span&gt;
+
+&lt;span class=&quot;cp&quot;&gt;&amp;lt;!DOCTYPE HTML&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;html&amp;gt;&lt;/span&gt;
+
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;body&amp;gt;&lt;/span&gt;
+  &lt;span class=&quot;nt&quot;&gt;&amp;lt;script &lt;/span&gt;&lt;span class=&quot;na&quot;&gt;nonce=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;&amp;lt;?php echo $nonce; ?&amp;gt;&amp;quot;&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nb&quot;&gt;document&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;write&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;6&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;7&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+  &lt;span class=&quot;nt&quot;&gt;&amp;lt;/script&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;/body&amp;gt;&lt;/span&gt;
+
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;/html&amp;gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;You can see that we also have a new attribute in our &lt;code&gt;&amp;lt;script&amp;gt;&lt;/code&gt; tag where Apache can resolve the variable &lt;code&gt;$nonce&lt;/code&gt; and insert its value into the tag. Let&amp;rsquo;s give it a test by navigating to our new page and viewing the source. (With Firefox on macOS you can do this by using the &lt;code&gt;⌘-u&lt;/code&gt; keyboard shortcut.) We should see something similar to the following:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-html&quot; data-lang=&quot;html&quot;&gt;&lt;span class=&quot;cp&quot;&gt;&amp;lt;!DOCTYPE HTML&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;html&amp;gt;&lt;/span&gt;
+
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;body&amp;gt;&lt;/span&gt;
+  &lt;span class=&quot;nt&quot;&gt;&amp;lt;script &lt;/span&gt;&lt;span class=&quot;na&quot;&gt;nonce=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;rbtNmFdxqMwtWSof7ZtlOvn5aItSVOon/j3ERky412I=&amp;quot;&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nb&quot;&gt;document&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;write&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;6&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;7&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+  &lt;span class=&quot;nt&quot;&gt;&amp;lt;/script&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;/body&amp;gt;&lt;/span&gt;
+
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;/html&amp;gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;We can verify also that we get a nonce value in the headers by running &lt;code&gt;curl -I&lt;/code&gt; against our site:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;HTTP/1.1 200 OK
+Date: Mon, 03 Jul 2017 05:01:53 GMT
+Server: Apache/2.2.15 (CentOS)
+X-Powered-By: PHP/5.3.3
+Content-Security-Policy: script-src &amp;#39;nonce-u3gydq0ren/rpw2QExXDY/EGnOlNRDVY95aQ1fWHrUQ=&amp;#39;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;We can also test that this works by changing the nonce attribute to some arbitrary value (that&amp;rsquo;s not the actual nonce). If we do so, we see that nothing is displayed on the page when we navigate to it. Fantastic! In the next post, I might continue with this but will more likely do a little work with Puppet.&lt;/p&gt;
+
+&lt;h1&gt;Fin&lt;/h1&gt;
+</description>
+        <pubDate>Sun, 02 Jul 2017 08:12:12 -0400</pubDate>
+        <link>http://localhost:4000/2017/07/02/passing-some-web-security-tests/</link>
+        <guid isPermaLink="true">http://localhost:4000/2017/07/02/passing-some-web-security-tests/</guid>
+      </item>
+    
+      <item>
+        <title>Syncthing, configuring a self-hosted syncing service.</title>
+        <description>&lt;h3&gt;An interlude&lt;/h3&gt;
+
+&lt;p&gt;I&amp;rsquo;m breaking from the series of web security posts in a diversion that I hope will end in an acceptable solution to a problem I&amp;rsquo;ve been experiencing. The problem is not unique and many solutions exist for it: I have a bunch of directories that I&amp;rsquo;d like to sync between multiple machines. I&amp;rsquo;ve been using &lt;code&gt;rsync&lt;/code&gt;, and while I&amp;rsquo;m sure it&amp;rsquo;s possible to wrangle it into doing what I&amp;rsquo;d like, I&amp;rsquo;m interested in a more elegant solution. Enter &lt;a href=&quot;https://syncthing.net/&quot;&gt;Syncthing&lt;/a&gt;.&lt;/p&gt;
+
+&lt;h3&gt;How is Syncthing unique?&lt;/h3&gt;
+
+&lt;p&gt;The de facto standard solution for the problem stated above is Dropbox. Dropbox is great and Just Works™, but I&amp;rsquo;d like a self-hosted solution. Not only that, but I don&amp;rsquo;t need any of the bells and whistles that Dropbox offers and it&amp;rsquo;s another excuse to fiddle around with technoligically interesting things.&lt;/p&gt;
+
+&lt;hr&gt;
+
+&lt;h3&gt;Installing Syncthing&lt;/h3&gt;
+
+&lt;p&gt;Syncthing has &lt;a href=&quot;https://docs.syncthing.net/users/contrib.html#contributions&quot;&gt;different flavors for different operating systems&lt;/a&gt; and in this case I&amp;rsquo;m running CentOS 7. You can find the unofficial Syncthing RPM and accompanying directions &lt;a href=&quot;https://github.com/mlazarov/syncthing-centos&quot;&gt;here&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;I had to install &lt;code&gt;rpmdevtools&lt;/code&gt; before following the instructions above, though you may have to install all of the additional packages suggested in the documentation:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo yum install rpmdevtools
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Now we can install the RPM and proceed:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ yum install https://github.com/mlazarov/syncthing-centos/releases/download/v0.14.7/syncthing-0.14.7-0.el7.centos.x86_64.rpm
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Once the RPM is installed, we can set up the necessary directory structure, clone the repo, and build the package:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ git clone https://github.com/mlazarov/syncthing-centos.git rpmbuild/
+$ mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+$ echo &amp;#39;%_topdir %(echo $HOME)/rpmbuild&amp;#39; &amp;gt; ~/.rpmmacros
+$ cd ~/rpmbuild/SOURCES/
+$ spectool -g ../SPECS/syncthing.spec
+$ cd ~/rpmbuild/SPECS/
+$ rpmbuild -bb syncthing.spec
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;hr&gt;
+
+&lt;h3&gt;Configuring Syncthing&lt;/h3&gt;
+
+&lt;p&gt;&lt;a href=&quot;https://docs.syncthing.net/intro/getting-started.html&quot;&gt;The Getting Started&lt;/a&gt; guide walks through the configuration process by advising us to configure Syncthing at &lt;code&gt;https://localhost:8384&lt;/code&gt;; since I&amp;rsquo;m configuring Syncthing on a remote server, I found that &lt;a href=&quot;https://docs.syncthing.net/users/config.html&quot;&gt;the configuration section of the documentation&lt;/a&gt; helped me get to the point where I could reach the admin console over the Internet.&lt;/p&gt;
+
+&lt;p&gt;First, start the service to generate the &lt;code&gt;.config&lt;/code&gt; directory for Syncthing:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo systemctl start syncthing@&amp;lt;username&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;We can now find Syncthing&amp;rsquo;s config file at &lt;code&gt;$HOME/.config/syncthing&lt;/code&gt;; let&amp;rsquo;s open it and make some alterations so that we can get to the admin console. Find the &lt;code&gt;&amp;lt;gui&amp;gt;&lt;/code&gt; element and change the value for the &lt;code&gt;&amp;lt;address&amp;gt;&lt;/code&gt; child element to reflect the value for the IP address at which we&amp;rsquo;ll be reaching the admin console:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;&amp;lt;gui enabled=&amp;quot;true&amp;quot; tls=&amp;quot;true&amp;quot;&amp;gt;
+    &amp;lt;address&amp;gt;192.168.0.255:8384&amp;lt;/address&amp;gt;
+    &amp;lt;apikey&amp;gt;l7jSbCqPD95JYZ0g8vi4ZLAMg3ulnN1b&amp;lt;/apikey&amp;gt;
+    &amp;lt;theme&amp;gt;default&amp;lt;/theme&amp;gt;
+&amp;lt;/gui&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Once this is done, restart the service and connect to the address that we entered above. You should receive a warning about the interface being open to the internet; click on the &lt;strong&gt;settings&lt;/strong&gt; button and set up a username/password and check the box to enable HTTPS. Restart the service and reload the page.&lt;/p&gt;
+
+&lt;h3&gt;Adding additional devices&lt;/h3&gt;
+
+&lt;p&gt;Next we&amp;rsquo;ll need to configure Syncthing on other devices that expect to participate in synchronizing directories and files. I&amp;rsquo;m running Syncthing on OS X, so that&amp;rsquo;s the only platform I&amp;rsquo;ll cover (unless I decide to start using it on Windows, in which case I&amp;rsquo;ll update this at that point).&lt;/p&gt;
+
+&lt;p&gt;I found that &lt;a href=&quot;https://github.com/xor-gate/syncthing-macosx/releases/tag/v0.14.8-2&quot;&gt;this GitHub project&lt;/a&gt; seems to be the best maintained of the Community Contributions. Not only that but it provides a DMG for installation which you can find at the hyperlink included in the last sentence. Use the DMG to install Syncthing; a window should prompt you to move the Syncthing icon into the &lt;code&gt;~/Applications&lt;/code&gt; directory, which you should do. Go ahead and double-click the application; Syncthing should open its web interface at &lt;code&gt;http://127.0.0.:8384&lt;/code&gt;. When I set everything up, Syncthing was configured to auto-update, which it did. After restarting, the web interface was not reachable. I didn&amp;rsquo;t want to wrestle with it, so I turned off auto-update in settings, moved the application to the trash, reinstalled it and everything worked.&lt;/p&gt;
+
+&lt;p&gt;To add other devices, you can click &amp;ldquo;Show ID&amp;rdquo; under the Actions drop down menu, copy the ID, click &amp;ldquo;+Add Remote Device&amp;rdquo; in the other machine&amp;rsquo;s web console, and paste the ID. Once this is done, you should see a prompt on the other web console to add another remote device which configures everything once you accept it. The last thing that I did—configuration-wise—was designate the headless server as an &amp;ldquo;Introducer;&amp;rdquo; this means that any additional devices added via the web interface on the headless server will be auto-configured on any additional devices. Pretty cool.&lt;/p&gt;
+
+&lt;p&gt;Now you can configure synced directories to your heart&amp;rsquo;s content.&lt;/p&gt;
+</description>
+        <pubDate>Thu, 20 Apr 2017 11:57:14 -0400</pubDate>
+        <link>http://localhost:4000/2017/04/20/syncthing/</link>
+        <guid isPermaLink="true">http://localhost:4000/2017/04/20/syncthing/</guid>
+      </item>
+    
+      <item>
+        <title>Web security and you, part two.</title>
+        <description>&lt;h3&gt;The saga continues&lt;/h3&gt;
+
+&lt;p&gt;Before getting into configuring Apache to accomodate secure response headers (which I&amp;rsquo;ll save for the next post to avoid another lengthy post), I need to cover the Qualys SSL Report generated &lt;a href=&quot;https://www.ssllabs.com/ssltest/analyze.html?d=blog.tminor.io&quot;&gt;here&lt;/a&gt;. I neglected to mention in my last post that if you&amp;rsquo;re reading this in the not-so-distant future, all of these tests will probably (hopefully) return favorable results. In any case, I hope to outline how my site failed, why, and what implications underly its failure.&lt;/p&gt;
+
+&lt;hr&gt;
+
+&lt;h3&gt;What&amp;rsquo;s the point?&lt;/h3&gt;
+
+&lt;p&gt;I understand that certificates are a necessary cog in the machine of secure web browsing. I&amp;rsquo;ve watched &lt;a href=&quot;https://www.youtube.com/watch?v=GSIDS_lvRv4&quot;&gt;this Computerphile video&lt;/a&gt; several times and it helped me to understand the whole process a bit more, but my depth of knowledge has remained, nonetheless, quite shallow.&lt;/p&gt;
+
+&lt;p&gt;To better understand public key certificates, it&amp;rsquo;s important to identify the problem that they are intended to solve. In simple terms, public key certificates are intended to establish a digital entity&amp;rsquo;s identity and maintain data integrity using cryptography.&lt;/p&gt;
+
+&lt;p&gt;One of the more easily understood examples of cryptography is a typical cereal box style decoder ring. These rings generally (always?) use affine encipherment which &lt;a href=&quot;https://en.wikipedia.org/wiki/Affine_cipher&quot;&gt;simply&lt;/a&gt; means that alpha characters are encoded as their numerical equivalent (a → 1, b → 2, etc.). If two parties hope to share a secret using such a method, the parties must agree upon a predetermined shared secret. This is an example of symmetric key cryptography (a single key serves to encrypt &lt;em&gt;and&lt;/em&gt; decrypt).&lt;/p&gt;
+
+&lt;p&gt;With public key cryptography, two parties needn&amp;rsquo;t share a secret to establish a secure means of communication. Public key cryptography is a cryptographic system that utilizes a key pair, one public and one private. Let&amp;rsquo;s use Alice and Bob to illustrate how this works. Alice wants to send a private message to Bob but lives many miles away and can&amp;rsquo;t meet Bob to exchange a shared secret. Thankfully, Bob already has a system set up and sends Alice his brand new public key. Alice uses Bob&amp;rsquo;s key to encrypt a message and sends it off to him. Unfortunately, Eve intercepts the message, hoping to learn all of Alice and Bob&amp;rsquo;s salacious secrets. Thankfully for Alice and Bob, Eve doesn&amp;rsquo;t have the private key and therefore can&amp;rsquo;t decrypt the message. Fantastic!&lt;/p&gt;
+
+&lt;p&gt;Okay, so now we have a basic understanding of public key cryptography. Let&amp;rsquo;s make explicit another implication presented in public key cryptography: given that Bob keeps his private key &lt;em&gt;private&lt;/em&gt;, it can be used to prove his identity and the authenticity of his digital communications (and can be used to prove cryptographic &lt;a href=&quot;http://world.std.com/%7Ecme/non-repudiation.htm&quot;&gt;non-repudiation&lt;/a&gt;). &lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;X.509&amp;hellip; or Public Key Infrastructure&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;So Bob has a public and private key and can establish his identitiy using a certificate containing his public key; how can we prove that Chuck—as a malicious actor—hasn&amp;rsquo;t created a certificate in Bob&amp;rsquo;s name? Well, in the hypothetical illustration above, we can&amp;rsquo;t. This is where public key infratructure (PKI) comes in. PGP (as an example of a sort of &lt;em&gt;ad libitum&lt;/em&gt; method of ensuring authenticity and data integrity) relies on a variation of PKI, but it utilizes a decentralized model to establish trust (like we saw with Alice and Bob earlier). This is not a bad thing, but it&amp;rsquo;s not the method by which trust is established on the web (generally speaking). The Internet uses a centralized method to accomplish this. &lt;a href=&quot;https://tools.ietf.org/html/rfc5280#page-8&quot;&gt;RFC 5280&lt;/a&gt; defines this in great detail; essentially, an entity requests a certificate using a cryptographic digital signature and a certificate is granted to that entity by a trusted authority using its signature. Here&amp;rsquo;s a rough illustration of how the process might look from request to usage:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;An entity requests a certificate using a Certificate Signing Request (CSR).&lt;/li&gt;
+&lt;li&gt;A Certificate Authority (CA) (such as Google, ISRG, etc.) receives the request and issues a certificate, given that the requester has sufficiently proven their identity.&lt;/li&gt;
+&lt;li&gt;When a user agent (UA) receives the certificate, it checks against its trust store whether the certificate issuer is a valid one.&lt;/li&gt;
+&lt;li&gt;If the UA finds that a certificate is self-signed or issued by a CA not contained within the trust store, the UA warns the user.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;&lt;strong&gt;Transport Layer Security&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;Certificates are utilized on the Internet as a means of establishing secure communication via Transport Layer Security (TLS). TLS was preceded by Secure Sockets Layer (SSL) and is often colloquially (and confusingly) referred to as such. TLS brings together all of the concepts explored above: it is a protocol by which two applications can establish secure, private communication and ensure data integrity using symmetric cryptography. The easiest way to understand this is to walk through a typical TLS handshake between a client and server:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;CLIENT: ClientHello - message containing TLS/SSL options (cipher suite, TLS version, etc.)
+SERVER: ServerHello - server responds with chosen TLS/SSL options
+SERVER: Certificate - server&amp;#39;s certificate chain sent to client
+SERVER: ServerHelloDone - server indicates completion of its part of negotiation
+CLIENT: ClientKeyExchange - client sends encrypted session key using server&amp;#39;s public key
+CLIENT: ChangeCipherSpec - client intializes negotiated options for all future messages
+CLIENT: Finished - client asks server to verify negotiated options
+SERVER: ChangeCipherSpec - same as above, but enacted by the server
+SERVER: Finished - verification requested by server
+
+Encrypted application data can now be sent
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;As we can see, the server&amp;rsquo;s certificate is used to both prove its identity and establish a secure channel of communication between itself and a client. To reiterate: a client makes a request to connect to a server; the server responds with its certificate containing its public key; the client uses the server&amp;rsquo;s public key to encrypt a private session key that&amp;rsquo;s generated client-side and that will be used to establish symmetric encryption; the client and server agree that the information they&amp;rsquo;ve exchanged is correct and begin encrypted communication.&lt;/p&gt;
+
+&lt;hr&gt;
+
+&lt;h3&gt;What does Qualys&amp;rsquo;s SSL report tell us?&lt;/h3&gt;
+
+&lt;p&gt;The report linked at the top of the post does several things: first, we&amp;rsquo;re presented with basic information such as the validity dates, the common name, the issuer, etc. of each certificate. Here are some highlights with some basic explanation:&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Key:  RSA 2048 bits (e 65537)&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;This attribute specifies the method used to obtain the public key; in this case, the key used was generated with &lt;a href=&quot;https://tools.ietf.org/html/rfc3447&quot;&gt;RSA&lt;/a&gt; and is 2048 bits in length. An alternative to RSA is elliptic curve cryptography; I was curious to see the prominence of key types and found that both Facebook and Google seem to have used this method for key generation. Take a look at &lt;a href=&quot;https://crypto.stackexchange.com/a/1194&quot;&gt;this StackExchange answer&lt;/a&gt; for more interesting discussion regarding RSA and EC.&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Extended Validation:  No&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Extended validation (EV) certificates involve a lengthier, more involved process for verifying the identity of an entity. To a user in front of a browser, this appears as a green bar, padlock, and the entity&amp;rsquo;s legal name appearing next to the URL at the top of browser. Also, they are &lt;a href=&quot;https://www.digicert.com/ev-price-comparison.htm&quot;&gt;very expensive&lt;/a&gt;.&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Certificate Transparency:     No&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Certificate Transparency is an experimental protocol for the logging of TLS certificate activity, allowing transparent auditing. I find it odd that this test failed, as Let&amp;rsquo;s Encrypt advertises that they &lt;a href=&quot;https://letsencrypt.org/certificates/&quot;&gt;log all certificates upon issuance&lt;/a&gt;. As an interesting side note, CT led to the &lt;a href=&quot;https://groups.google.com/a/chromium.org/d/msg/blink-dev/eUAKwjihhBs/rpxMXjZHCQAJ&quot;&gt;recent kerfuffle involving Google Chrome and Symantec&lt;/a&gt;.&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;OCSP Must Staple:     No&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;OCSP stands for Online Certificate Status Protocol and is defined in RFC 6960 as &amp;ldquo;a protocol useful in determining the current status of a digital certificate without requiring Certificate Revocation Lists (CRLs).&amp;rdquo; If a private key is compromised, an attacker can intercept and impersonate the party to which the key originally belonged. The original entity can generate a new certificate, however the attacker can persist in impersonation. Originally when clients received a certificate from a host, they&amp;rsquo;d check against previously retrieved CRLs; CRLs were generally handled poorly in the past &lt;a href=&quot;https://news.netcraft.com/archives/2013/05/13/how-certificate-revocation-doesnt-work-in-practice.html&quot;&gt;by browsers&lt;/a&gt;. OCSP is an alternative that involves an additional check where a client requests a certificate&amp;rsquo;s revocation status from the issuing CA. For more highly trafficked sites, this could cause an increased burden on infrastructure. OCSP stapling shifts the burden to the server to which a certificate belongs; the server contacts the issuing CA at regular intervals requesting revocation status and returns it to the client. OCSP Stapling has been plagued by &lt;a href=&quot;https://www.grc.com/revocation/ocsp-must-staple.htm&quot;&gt;its implementation&lt;/a&gt; resulting in inconsistent deployment and adoption in browsers. OCSP Must Staple aims to solve the problem by adding a certificate extension that indicates that a respons MUST be stapled, otherwise the browser is to return a failure. This prevents attackers from skirting the return of a non-mandatory OCSP response. &lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;DNS CAA:  No&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Certificate Authority Authorization records are a type of DNS record that specify CAs authorized to issue certificates for a given domain. Before a certificate is issued, the CA performs a lookup to verify whether or not it is authorized. &lt;a href=&quot;https://scotthelme.co.uk/certificate-authority-authorization/&quot;&gt;As pointed out here&lt;/a&gt;, it&amp;rsquo;s not a perfect solution but adds yet another line of defense.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Configuration&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;The remainder of the report covers protocol and cipher suite support as well as vulnerability information. Among the list are two cipher suites both listed under TLS 1.0. This section also points out that my site may not be compatible with browsers that don&amp;rsquo;t support SNI. Server Name Indication is an extension to TLS that involves the client indicating the host name intended for connection; this enables a single server to present several certificates via one IP address without using a single certificate (it is possible to list multiple domain names in a certificate&amp;rsquo;s &lt;code&gt;subjectAltName&lt;/code&gt; field, but the certificate must be reissued every time the list changes, rendering this strategy impractical).&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Protocol details (END)&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;This section outlines quite a lot of information (a good bit of which I covered in the last post). One of the biggest detractors to my site&amp;rsquo;s grade in this report is the fact that it&amp;rsquo;s vulnerable to the POODLE attack (i.e. the site supports SSL 3.0). I would really like to write about POODLE, but I&amp;rsquo;m afraid it&amp;rsquo;s &lt;a href=&quot;https://security.stackexchange.com/a/70724&quot;&gt;quite a bit over my head&lt;/a&gt;. Maybe some day (far in the future) I&amp;rsquo;ll be able to understand it. For now, I&amp;rsquo;ll call it quits. In the next post I&amp;rsquo;ll finally get around to actually fixing all of this!&lt;/p&gt;
+</description>
+        <pubDate>Thu, 13 Apr 2017 22:40:13 -0400</pubDate>
+        <link>http://localhost:4000/2017/04/13/configure-security-headers/</link>
+        <guid isPermaLink="true">http://localhost:4000/2017/04/13/configure-security-headers/</guid>
+      </item>
+    
+      <item>
+        <title>Web security and you.</title>
+        <description>&lt;h3&gt;Why should I care?&lt;/h3&gt;
+
+&lt;p&gt;About a month and a half ago a coworker pointed out that when tested against &lt;a href=&quot;https://securityheaders.io/?q=blog.tminor.io&amp;followRedirects=on&quot;&gt;these standards&lt;/a&gt;, my web site receives a failing grade. Even more, when tested against &lt;a href=&quot;https://www.ssllabs.com/ssltest/analyze.html?d=blog.tminor.io&quot;&gt;this battery of standards&lt;/a&gt;, my site barely passed, receiving a C.&lt;/p&gt;
+
+&lt;p&gt;In reality, I could get away with trivializing these issues and ignore them altogether. This site is just a pet project that serves no mission critical purpose; it&amp;rsquo;s not used to serve sensitive information; it doesn&amp;rsquo;t host any web applications (at least ones that I&amp;rsquo;ve written); I could have shrugged it off and ignored it. But no! Defeatism begets mediocrity and no one wants to be average!&lt;/p&gt;
+
+&lt;hr&gt;
+
+&lt;h3&gt;Security headers and you&lt;/h3&gt;
+
+&lt;p&gt;The tests linked above examine different aspects of web security as they pertain to actual web pages. I&amp;rsquo;ll start with &lt;a href=&quot;https://securityheaders.io&quot;&gt;https://securityheaders.io&lt;/a&gt;, through which this site received a big fat &amp;ldquo;F.&amp;rdquo; What sort of implications underly a lack of HTTP security headers?&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;HTTP basics&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;Let&amp;rsquo;s assume some measure of ignorance and establish a basic foundational knowledge (mostly for my own sake). From &lt;a href=&quot;https://tools.ietf.org/html/rfc7230&quot;&gt;RFC 7230&lt;/a&gt;:&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;The Hypertext Transfer Protocol (HTTP) is a stateless application-level protocol for distributed, collaborative, hypertext information systems.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;More pragmatically, HTTP is a request/response protocol that functions to deliver messages over a session-layer connection between a client and server. A client may be any of a variety of applications that submits an HTTP request to a system that runs an application that responds to said HTTP requests. A request message begins with a request line, specifying a &lt;a href=&quot;https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html&quot;&gt;method token&lt;/a&gt;, a &lt;a href=&quot;https://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.2&quot;&gt;Uniform Resource Identifier&lt;/a&gt; (URI), and the protocol version, followed by header fields (which we care about for this post) and two CRLFs (Carriage Return Line Feed), indicating the expectation that the message body containing a payload is to follow (if necessary).&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;What purpose do HTTP headers serve?&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;We&amp;rsquo;ll start with an example. Running &lt;code&gt;curl -I&lt;/code&gt; against this site returns the following response header fields:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;HTTP/1.1 200 OK
+Date: Sun, 26 Mar 2017 15:56:39 GMT
+Server: Apache/2.4.6 (CentOS) OpenSSL/1.0.1e-fips
+Last-Modified: Tue, 21 Mar 2017 15:36:46 GMT
+ETag: &amp;quot;12a0-54b3f6958bf80&amp;quot;
+Accept-Ranges: bytes
+Content-Length: 4768
+Content-Type: text/html; charset=UTF-8
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Again, from RFC 7230:&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Each header field consists of a case-insensitive field name followed by a colon (&amp;ldquo;:&amp;rdquo;), optional leading whitespace, the field value, and optional trailing whitespace.&lt;a href=&quot;https://tools.ietf.org/html/rfc7230&quot;&gt;&lt;sup&gt;1&lt;/sup&gt;&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Many of the fields above are defined in RFC 7230 and others, but 7230 also specifies that header fields are fully extensible. As such, HTTP has a variety of header fields that are standard and non-standard. Borrowing from Wikipedia, HTTP headers serve to define operating parameters of an HTTP transaction.&lt;/p&gt;
+
+&lt;p&gt;Moving on, we will concern ourselves with header fields that prescribe methods of operation that ensure security. Taking a look at the report generated above, the header fields that are missing from an HTTP transaction with my site are as follows:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Strict-Transport-Security&lt;/li&gt;
+&lt;li&gt;Content-Security-Policy&lt;/li&gt;
+&lt;li&gt;Public-Key-Pins&lt;/li&gt;
+&lt;li&gt;X-Frame-Options&lt;/li&gt;
+&lt;li&gt;X-XSS-Protection&lt;/li&gt;
+&lt;li&gt;X-Content-Type-Options&lt;/li&gt;
+&lt;li&gt;Referrer-Policy&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Let&amp;rsquo;s move on to examining and defining the function of each.&lt;/p&gt;
+
+&lt;hr&gt;
+
+&lt;h3&gt;HTTP security headers&lt;/h3&gt;
+
+&lt;p&gt;Within the past few years, the web has seen a surge in malicious activity. These attacks capitalize on a wide variety of threat vectors including social engineering, software vulnerabilities, and so on. Though HTTP headers can&amp;rsquo;t solve human gullibility, they can help to prevent other types of attacks.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Strict-Transport-Security&lt;/strong&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;(HSTS) defines a mechanism enabling web sites to declare themselves accessible only via secure connections and/or for users to be able to direct their user agent(s) to interact with given sites only over secure connections.&lt;a href=&quot;https://tools.ietf.org/html/rfc6797&quot;&gt;&lt;sup&gt;2&lt;/sup&gt;&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;First, let&amp;rsquo;s consider what sort of threat such a specification would aim to mitigate.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;Passive attack&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;Alice is connected to the Internet via a local wireless network at a coffee shop. The AP is password protected using &lt;a href=&quot;https://en.wikipedia.org/wiki/IEEE_802.11i-2004&quot;&gt;WPA2-PSK&lt;/a&gt;; Bob is also using the coffee shop&amp;rsquo;s AP to access the Internet. Unfortunately for Alice, Bob is interested in malicious packet sniffing. WPA2-PSK encrypts over-the-air traffic using individualized pairwise keys derived (via &lt;a href=&quot;https://en.wikipedia.org/wiki/IEEE_802.11i-2004#The_four-way_handshake&quot;&gt;four-way handshake&lt;/a&gt;) by concatenating a slew of variables that include (but are not limited to) the PSK, the AP&amp;rsquo;s MAC address, and so on; unfortunately (again—Alice is very unlucky), Bob is versed in the ways of the four-way handshake and knows that—if he captures it—he can ultimately snoop Alice&amp;rsquo;s traffic. Bob forcefully de-auths Alice and captures the four-way handshake between Alice and the AP. Bob can now decrypt Alice&amp;rsquo;s traffic. In this case, if Alice is interacting with a website over HTTP, Bob can see any transaction between Alice and that website. Thankfully, fewer and fewer websites deliver sensitive information via HTTP (and Firefox even warns users &lt;a href=&quot;https://blog.mozilla.org/security/2017/01/20/communicating-the-dangers-of-non-secure-http/&quot;&gt;when they do&lt;/a&gt;).&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;Active attack&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;As a variation on the above, let&amp;rsquo;s consider that Bob is a little more aggressive and has managed to man-in-the-middle Alice. Bob intercepts Alice&amp;rsquo;s traffic by virtue of &lt;a href=&quot;https://en.wikipedia.org/wiki/ARP_spoofing&quot;&gt;ARP cache poisoning&lt;/a&gt; and attempts to use &lt;a href=&quot;https://www.youtube.com/watch?v=MFol6IMbZ7Y&quot;&gt;SSLStrip&lt;/a&gt; to force Alice&amp;rsquo;s browser to continue its session with alicesbank.com using HTTP and proxy the connection so that he can get whatever information he needs to steal all of Alice&amp;rsquo;s money.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;HSTS to the rescue&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;HSTS was really born as a solution to the latter issue and proves its usefulness in such instances. Let&amp;rsquo;s assume that Alice uses a modern browser that utilizes Google&amp;rsquo;s &lt;a href=&quot;https://hstspreload.org/&quot;&gt;HSTS preload list&lt;/a&gt;. Even if Alice had never connected to her bank&amp;rsquo;s website—given that alicesbank.com has been added to the preload list—, Alice&amp;rsquo;s browser will not allow her to connect in the case described above. Very nifty indeed.&lt;/p&gt;
+
+&lt;p&gt;In the case of a passive attacker, the utility of HSTS is slightly diminished. HSTS cannot control whether or not a website uses HTTPS/HSTS. In such an instance the onus is upon the user to be aware of unencrypted connections. Thankfully, browsers have taken to very prominent warnings to notify users in such instances.&lt;/p&gt;
+
+&lt;p&gt;&lt;em&gt;Shortcomings&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;HSTS can be bypassed with a bit of effort. See &lt;a href=&quot;https://finnwea.com/blog/bypassing-http-strict-transport-security-hsts&quot;&gt;this blog post&lt;/a&gt; for more information.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Content-Security-Policy&lt;/strong&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;[CSP is] a mechanism by which web developers can control the resources which a particular page can fetch or execute&amp;hellip;&lt;a href=&quot;https://www.w3.org/TR/CSP/&quot;&gt;&lt;sup&gt;3&lt;/sup&gt;&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Content-Security-Policy is designed to mitigate the risk of content injection vulnerabilities such as cross-site scripting (XSS). XSS exploits the basic principle underpinning &lt;a href=&quot;https://en.wikipedia.org/wiki/Same-origin_policy&quot;&gt;same-origin policy&lt;/a&gt;, which (as an oversimplification) asserts that code from one page is permitted to access data from another if they have the same origin (where origin is defined as a URI&amp;rsquo;s scheme, port, and host). An attacker can exploit any number of software vulnerabilities to inject malicious client-side scripts into an otherwise benign web page.&lt;/p&gt;
+
+&lt;p&gt;As an example, a miscreant could inject an HTML script source attribute to load malicious code. It&amp;rsquo;s very common to see web pages loading code from CDNs such as Google:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-html&quot; data-lang=&quot;html&quot;&gt;&lt;span class=&quot;nt&quot;&gt;&amp;lt;script &lt;/span&gt;&lt;span class=&quot;na&quot;&gt;src=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;https://ajax.googleapis.com/ajax/libs/angularjs/1.5.7/angular.min.js&amp;quot;&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;&amp;gt;&amp;lt;/script&amp;gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;At first I was confused by this; I wasn&amp;rsquo;t sure exactly how this conformed to any sort of same-origin policy. In order to understand the principal of same-origin, it&amp;rsquo;s important to distinguish that same-origin only applies in terms of the browser (i.e. only the browser cares about same-origin). A same-origin policy generally only enforces rules to prevent, for example, an iframe (a web page within a web page, more or less) from reading or modifying contents from the parent frame. This means that if a web page loads a script from an external source &lt;em&gt;before&lt;/em&gt; sending it to a browser, there&amp;rsquo;s no issue; the browser sees all of the code and content coming from the same place.&lt;/p&gt;
+
+&lt;p&gt;Hopefully this explanation makes clear how content on the server side can be exploited. Let&amp;rsquo;s consider an example where a server doesn&amp;rsquo;t enforce CSP.&lt;/p&gt;
+
+&lt;p&gt;Let&amp;rsquo;s say that Bob runs a WordPress blog. Bob has auto-updating disabled and is behind on patching and missed one of the latest &lt;a href=&quot;https://blog.sucuri.net/2017/02/content-injection-vulnerability-wordpress-rest-api.html&quot;&gt;WordPress vulnerabilities&lt;/a&gt;. Alice, being a savvy ne&amp;#39;er-do-well, has happened upon Bob&amp;rsquo;s blog and begins to poke at it until discovering that the site is ripe for owning. Alice injects copious amounts of porn and spam, leaving Bob&amp;rsquo;s blog a steaming cesspool.&lt;/p&gt;
+
+&lt;p&gt;For the sake of illustration, let&amp;rsquo;s say that Bob is a consultant in the info sec space. If potential clients were to happen upon Bob&amp;rsquo;s site, that would be a little embarassing, needless to say.&lt;/p&gt;
+
+&lt;p&gt;This probably doesn&amp;rsquo;t bare explaining, but this hypothetical situation could have been prevented with CSP white listing. There&amp;rsquo;s even a &lt;a href=&quot;https://wordpress.org/plugins/wp-content-security-policy/&quot;&gt;plugin&lt;/a&gt; so that anyone can do it!&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Public-Key-Pins&lt;/strong&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;[HTTP Public Key Pinning] allows web host operators to instruct user agents to remember (&amp;ldquo;pin&amp;rdquo;) the hosts&amp;rsquo; cryptographic identities over a period of time.&lt;a href=&quot;https://tools.ietf.org/html/rfc7469&quot;&gt;&lt;sup&gt;4&lt;/sup&gt;&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Let&amp;rsquo;s start with an example of an HTTP response that contains an HPKP field.&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ curl -I https://github.com
+
+HTTP/1.1 200 OK
+Server: GitHub.com
+Date: Fri, 07 Apr 2017 19:42:32 GMT
+Content-Type: text/html; charset=utf-8
+Status: 200 OK
+&amp;lt;snip&amp;gt;
+Public-Key-Pins: 
+  max-age=5184000; 
+  pin-sha256=&amp;quot;WoiWRyIOVNa9ihaBciRSC7XHjliYS9VwUGOIud4PB18=&amp;quot;; 
+  pin-sha256=&amp;quot;RRM1dGqnDFsCJXBTHky16vi1obOlCgFFn/yOhI/y+ho=&amp;quot;; 
+  pin-sha256=&amp;quot;k2v657xBsOVe1PQRwOsHsw3bsGT2VzIqz5K+59sNQws=&amp;quot;; 
+  pin-sha256=&amp;quot;K87oWBWM9UZfyddvDfoxL+8lpNyoUB2ptGtn0fv6G2Q=&amp;quot;; 
+  pin-sha256=&amp;quot;IQBnNBEiFuhj+8x6X8XLgh01V9Ic5/V3IRQLNFFc7v4=&amp;quot;; 
+  pin-sha256=&amp;quot;iie1VXtL7HzAMF+/PVPR9xzT80kQxdZeJ+zduCB3uj0=&amp;quot;; 
+  pin-sha256=&amp;quot;LvRiGEjRqfzurezaWuj8Wie2gyHMrW5Q06LspMnox7A=&amp;quot;; 
+  includeSubDomains
+&amp;lt;/snip&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;As we can see, the HPKP header field contains a &lt;code&gt;max-age&lt;/code&gt; directive; this particular directive specifies the length of time which a pin is trusted by a User Agent (UA). Following this directive, we see several pin directives specifying different hash values (which are all derived via SHA-256 as this is the only hash function currently supported under RFC 7469).&lt;/p&gt;
+
+&lt;p&gt;Okay, great. But what does all of this mean and what risk does HPKP hope to mitigate?&lt;/p&gt;
+
+&lt;p&gt;Consider the breach of &lt;a href=&quot;https://en.wikipedia.org/wiki/DigiNotar#Issuance_of_fraudulent_certificates&quot;&gt;DigiNotar&lt;/a&gt;. DigiNotar was compromised in 2011 and a wildcard certificate was issued for &lt;code&gt;*.google.com&lt;/code&gt; (amongst many others). The attacker was then able to man-in-the-middle Gmail users in Iran using the fraudulent cert. At the time, Google Chrome reported an error due to a missing or incorrect HPKP pin.&lt;/p&gt;
+
+&lt;p&gt;An HPKP pin is generally a hash of the Subject Public Key Info portion of an X.509 certificate. So in the case above, users were being provided with a valid cert for &lt;code&gt;*.google.com&lt;/code&gt;, but the hash of the SPKI did not match the one found (or not) in the HPKP header field. Chrome reported this to the user while other browsers did not.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;X-Frame-Options&lt;/strong&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;The use of &amp;ldquo;X-Frame-Options&amp;rdquo; allows a web page from host B to declare that its content (for example, a button, links, text, etc.) must not be displayed in a frame (&amp;amp;ltframe&amp;amp;gt or &amp;amp;ltiframe&amp;amp;gt) of another page.&lt;a href=&quot;https://tools.ietf.org/html/rfc7034#section-1&quot;&gt;&lt;sup&gt;5&lt;/sup&gt;&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Clickjacking—in simple terms—is a technique used to trick a user into clicking something other than what was intended by the user. An example might be the following:&lt;/p&gt;
+
+&lt;p&gt;An attacker lures an unsuspecting victim into viewing their web page via an enticing ad. Once on the page, the attacker includes a multitude of interesting hyperlinks that the user clicks on. Unbeknownst to the victim, the attacker has used an invisible iframe placed directly over the interesting hyperlink. What the victim doesn&amp;rsquo;t know is that they&amp;rsquo;ve unwittingly clicked a Facebook &amp;ldquo;like&amp;rdquo; button. Gasp!&lt;/p&gt;
+
+&lt;p&gt;This could be prevented if Facebook used X-Frame-Options in its response headers, which it does:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;HTTP/1.1 200 OK
+&amp;lt;snip&amp;gt;
+public-key-pins-report-only: max-age=500; pin-sha256=&amp;quot;WoiWRyIOVNa9ihaBciRSC7XHjliYS9VwUGOIud4PB18=&amp;quot;; pin-sha256=&amp;quot;r/mIkG3eEpVdm+u/ko/cwxzOMo1bk4TyHIlByibiA5E=&amp;quot;; pin-sha256=&amp;quot;q4PO2G2cbkZhZ82+JgmRUyGMoAeozA+BSXVXQWB8XWQ=&amp;quot;; report-uri=&amp;quot;http://reports.fb.com/hpkp/&amp;quot;
+&amp;lt;snip&amp;gt;
+X-Frame-Options: DENY
+&amp;lt;/snip&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;(I left the &lt;code&gt;public-key-pins-report-only&lt;/code&gt; to illustrate that Facebook uses a different version of the HPKP header; in this case, all violations are reported but not acted upon [i.e. the browser allows connections upon violation].)&lt;/p&gt;
+
+&lt;p&gt;In the case given above, the attacker&amp;rsquo;s site is unable to load the Facebook &amp;ldquo;like&amp;rdquo; button in an invisible iframe.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;X-XSS-Protection&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;I don&amp;rsquo;t really feel like going into this one too much because:&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;The HTTP X-XSS-Protection response header is a feature of Internet Explorer, Chrome and Safari that stops pages from loading when they detect reflected cross-site scripting (XSS) attacks. Although these protections are largely unnecessary in modern browsers when sites implement a strong Content-Security-Policy that disables the use of inline JavaScript (&amp;lsquo;unsafe-inline&amp;rsquo;), they can still provide protections for users of older web browsers that don&amp;rsquo;t yet support CSP.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Here&amp;rsquo;s an example in an HTTP response from GitHub:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;HTTP/1.1 200 OK
+Server: GitHub.com
+Date: Sat, 08 Apr 2017 12:18:34 GMT
+Content-Type: text/html; charset=utf-8
+Status: 200 OK
+&amp;lt;snip&amp;gt;
+X-XSS-Protection: 1; mode=block
+&amp;lt;/snip&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;IE 8 was the first to implement this feature, followed by Safari and Chrome using XSS Auditor. I&amp;rsquo;m not sure how IE works, but you can find the source code for XSS Auditor &lt;a href=&quot;https://github.com/WebKit/webkit/blob/master/Source/WebCore/html/parser/XSSAuditor.cpp&quot;&gt;on Github&lt;/a&gt;. Simply put, the browser uses heuristics to detect common patterns of XSS attacks and blocks them.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;X-Content-Type-Options&lt;/strong&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;The X-Content-Type-Options response HTTP header is a marker used by the server to indicate that the MIME types advertised in the Content-Type headers should not be changed and be followed.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Since I was completely ignorant of this prior to starting this section, I&amp;rsquo;m going to go into some detail.&lt;/p&gt;
+
+&lt;p&gt;Multipurpose Internet Mail Extensions (MIME) was initially designed as an extension to SMTP in order to provide facilities to represent body content in character sets other than US-ASCII (which did not provide for transmission of extended character sets; 7-bit characters as opposed to 8-bit). RFC 1341 includes &lt;a href=&quot;https://tools.ietf.org/html/rfc1341#page-2&quot;&gt;specifications for RFC 822 header fields&lt;/a&gt; (and body part headers&amp;hellip; very confusing), one of which is the Content-Type field, which is intended to describe data contained within the body such that a UA can suitably choose a mechanism by which to present the data.&lt;/p&gt;
+
+&lt;p&gt;Though MIME was originally intended as an extension upon SMTP, it is also used by other Internet protocols for similar purposes. As an example, a server may say &amp;ldquo;this is data, and its MIME type is &lt;code&gt;image/jpg&lt;/code&gt;.&amp;rdquo; In Java, it would appear as:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-java&quot; data-lang=&quot;java&quot;&gt;&lt;span class=&quot;c1&quot;&gt;// Response is of type javax.servlet.ServletReponse&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;response&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;na&quot;&gt;setContentType&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;quot;image/jpg&amp;quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;);&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;The browser then knows how to handle the data. In the example, the browser can render the data internally, whereas if the data were presented as MIME type &lt;code&gt;application/pdf&lt;/code&gt;, it would know to render the data with whatever the browser knows as the PDF handler.&lt;/p&gt;
+
+&lt;p&gt;Alright, so what does X-Content-Type-Options do?&lt;/p&gt;
+
+&lt;p&gt;When this header field is absent, some browsers will practice &amp;ldquo;content sniffing,&amp;rdquo; which involves the browser guessing MIME types by examining a byte stream (which generally employs a mixture of heuristics, file signatures, etc.). This imposes a security risk; a browser may improperly interpret data types provided by an attacker, allowing the possibility for a XSS attack (see &lt;a href=&quot;http://www.adambarth.com/papers/2009/barth-caballero-song.pdf&quot;&gt;this old paper&lt;/a&gt;). All of this can be avoided by including the X-Content-Type-Options header field:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ curl -I https://www.facebook.com
+
+HTTP/1.1 200 OK
+&amp;lt;snip&amp;gt;
+X-Content-Type-Options: nosniff
+&amp;lt;snip&amp;gt;
+Content-Type: text/html
+&amp;lt;/snip&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;&lt;strong&gt;Referrer-Policy&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;Referrer-Policy allows a site to send reference information for instances where a user clicks a hyperlink away from the site to another. When a user clicks a link, the browser sends a request that includes the referrer information. Referrer logging can then be used for analytics to identify traffic patterns for promotional and statistical purposes.&lt;/p&gt;
+
+&lt;p&gt;(Interesting trivia: the Referrer-Policy referrer field is represented as &lt;code&gt;referer&lt;/code&gt;, a misspelling that originated in the initial proposition to incorporate the header in the HTTP specification.)&lt;/p&gt;
+
+&lt;p&gt;The logging of this information raises some privacy concerns. Scott Helme (the author of securityheaders.io) &lt;a href=&quot;https://scotthelme.co.uk/a-new-security-header-referrer-policy/&quot;&gt;indicates&lt;/a&gt; that a site can&amp;rsquo;t receive an A+ without a &amp;ldquo;good policy.&amp;rdquo; I&amp;rsquo;m kind of unclear on what constitutes a &amp;ldquo;good&amp;rdquo; policy; I&amp;rsquo;ll examine that in my next post where I hope to implement these headers.&lt;/p&gt;
+
+&lt;h3&gt;END&lt;/h3&gt;
+
+&lt;p&gt;Alright, this has gone on long enough. In the next post, I&amp;rsquo;ll try to stick to an illustration of how to implement the headers above via Apache configs. Oh yeah, I&amp;rsquo;ll also explain the results of the tests from &lt;a href=&quot;https://www.ssllabs.com/ssltest/analyze.html?d=blog.tminor.io&quot;&gt;Qualys&lt;/a&gt;.&lt;/p&gt;
+</description>
+        <pubDate>Sat, 08 Apr 2017 06:51:13 -0400</pubDate>
+        <link>http://localhost:4000/2017/04/08/web-security-1/</link>
+        <guid isPermaLink="true">http://localhost:4000/2017/04/08/web-security-1/</guid>
+      </item>
+    
+      <item>
+        <title>The beginning of a Puppet adventure.</title>
+        <description>&lt;h3&gt;Learning Puppet&lt;/h3&gt;
+
+&lt;p&gt;During this whole learning endeavor, my tendency has been to run headlong at whatever objective happens to stand next. For most things (such as Spacewalk) this works out well enough. With OpenLDAP, I learned that it wasn&amp;rsquo;t necessarily the optimum strategy; doing so resulted in a lot of fustration born of copious amounts of trial and error, much of which could have been avoided with some reading and patience. Despite the frustration, I did come away with what I felt to be a more thorough understanding (though I do not intend to insenuate that I deeply understand its inner workings and every nuance&amp;mdash;I certainly do not). Maybe it&amp;rsquo;s self evident, but as complexity compounds, so does requisite research and general study&amp;mdash;two things that I am not particularly adept at.&lt;/p&gt;
+
+&lt;p&gt;Puppet is yet another objective that is at odds with success via cursory research. So instead of yielding to weakness, I will instead attempt to distill my learning experience through some posts. Here we goooooo!&lt;/p&gt;
+
+&lt;hr&gt;
+
+&lt;h3&gt;Fundamentals of Puppet&lt;/h3&gt;
+
+&lt;p&gt;&lt;em&gt;much of what&amp;rsquo;s found below is taken directly from Puppet&amp;rsquo;s &lt;a href=&quot;https://docs.puppet.com/puppet/4.9/index.html&quot;&gt;documentation&lt;/a&gt; and reworded&lt;/em&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;What is Puppet and what does it do?&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;Puppet is a configuration management tool written in Ruby. It uses its own declarative language to &lt;em&gt;declare&lt;/em&gt; resources, classes, state, etc. that should be endemic to nodes on an as defined basis.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Architecture and behavior&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;Puppet uses one or more Puppet masters that manage nodes running Puppet agents. On a periodic basis, an agent sends a list of facts about the system on which it runs to the master and requests a catalog. Facts reference a number of attributes unique to a system such as an IP address, whether a file is present, what services are running, and so on. The requested catalog is a list of attributes that describe a desired state peculiar to that node; if the agent finds that a resource is not in a desired state, it makes the necessary changes. After applying changes, the agent sends a report to the master.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;About Puppet&amp;rsquo;s DSL&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;As alluded to above, Puppet&amp;rsquo;s functionality is predicated on its declarative nature. Puppet&amp;rsquo;s DSL declares resources, and according to the documentation, &amp;ldquo;every other part of the language exists to add flexibility and convenience to the way resources are declared.&amp;rdquo; Resources are grouped together in classes, where classes define configuration necessary to the functionality of a service or application. Smaller classes may be combined such that they provide a set of configuration, services, etc. necessary for e.g. a database server. Further, Puppet may also classify nodes. Node definitions dictate what classes should apply to a node. Alternatively, Puppet can utilize data provided from an &lt;a href=&quot;https://docs.puppet.com/guides/external_nodes.html&quot;&gt;External Node Classifier&lt;/a&gt; or Hiera.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Resources&lt;/strong&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Resources are the fundamental unit for modeling system configurations. Each resource describes some aspect of a system, like a specific service or package.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Puppet enforces resources via catalogs; a catalog defines a desired state and ensures it through the application of declared resources.&lt;/p&gt;
+
+&lt;p&gt;Puppet resources have a type, title, and attribute-value pairs that conform to the following syntax:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-puppet&quot; data-lang=&quot;puppet&quot;&gt;&lt;span class=&quot;na&quot;&gt;type&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;#39;title&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+  &lt;span class=&quot;na&quot;&gt;attribute&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;na&quot;&gt;value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Resource types dictate what aspects of configuration that resource can manage. Puppet has many built-in resource types such as files, services, and packages. New resource types can be defined in either Puppet or Ruby. &lt;/p&gt;
+
+&lt;p&gt;The title is an identifying string that must be unique per resource type; duplicate titles will cause a compilation failure. An example might be a file, in which case the title could be any arbitrary string value such as &lt;code&gt;&amp;#39;spam&amp;#39;&lt;/code&gt;. Generally this is a bad idea and would annoy others and cause confusion; instead, a file would be better served in being identified by its path, such as &lt;code&gt;/etc/sssd/sssd.conf&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;Attributes describe the desired state of a resource; resources generally have attributes that are required, optional, and in many cases have attributes that contain default values if no value is specifically assigned.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Ordering&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;Puppet uses attributes called metaparameters that can be used with any resource type. Metaparameters do not directly define system state but rather define how resources should interact with each other. A common example would be a service and its configuration file:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-puppet&quot; data-lang=&quot;puppet&quot;&gt;&lt;span class=&quot;k&quot;&gt;package&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;#39;krb5-server&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+  &lt;span class=&quot;na&quot;&gt;ensure&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;present&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+  &lt;span class=&quot;k&quot;&gt;before&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;File&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;#39;/etc/krb5.conf&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;],&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;The above code defines that the package for Kerberos 5 should be installed &lt;em&gt;before&lt;/em&gt; ensuring the presence of its config file. Likewise, &lt;code&gt;require&lt;/code&gt; can be used to establish the same dependency but with the opposite ordering:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-puppet&quot; data-lang=&quot;puppet&quot;&gt;&lt;span class=&quot;k&quot;&gt;file&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;#39;/etc/krb5.conf&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+  &lt;span class=&quot;na&quot;&gt;ensure&lt;/span&gt;  &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;file&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+  &lt;span class=&quot;na&quot;&gt;source&lt;/span&gt;  &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;#39;puppet:///modules/kerberos/krb5.conf&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+  &lt;span class=&quot;na&quot;&gt;require&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;Package&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&amp;#39;krb5-server&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;},&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;The above is missing certain attributes that should otherwise be specified, but the point is nonetheless suitably illustrated.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Classes&lt;/strong&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Classes are named blocks of Puppet code that are stored in modules for later use and are not applied until they are invoked by name.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;The syntax prescribes the following conventions:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-puppet&quot; data-lang=&quot;puppet&quot;&gt;&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;na&quot;&gt;name&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;
+  &lt;span class=&quot;na&quot;&gt;String&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$variable&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;#39;default value&amp;#39;&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;){&lt;/span&gt;
+  &lt;span class=&quot;na&quot;&gt;resource&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&amp;#39;title&amp;#39;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+    &lt;span class=&quot;na&quot;&gt;attribute&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;na&quot;&gt;value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;na&quot;&gt;attribute&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&amp;gt;&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$variable,&lt;/span&gt;
+  &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Class definitions contain the &lt;code&gt;class&lt;/code&gt; keyword, a class name, and a comma-separated list of parameters. Past that are curly brackets (opening and closing) between which is arbitrary Puppet code.&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Manifests and modules&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;Files containing Puppet code are called manifests and are appended with the &lt;code&gt;.pp&lt;/code&gt; file extension. Class definitions are contained in manifests which are in turn contained within modules. The file structure for a module generally appears as follows:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;/etc/puppetlabs/code/environments/production/modules/ntp/
+├── CHANGELOG.md
+├── checksums.json
+├── CONTRIBUTING.md
+├── data
+│   ├── . . .
+├── examples
+│   └── init.pp
+├── Gemfile
+├── hiera.yaml
+├── LICENSE
+├── manifests
+│   ├── config.pp
+│   ├── init.pp
+│   ├── install.pp
+│   └── service.pp
+├── metadata.json
+├── NOTICE
+├── Rakefile
+├── README.markdown
+├── spec
+│   ├── acceptance
+│   │   ├── . . .
+├── templates
+│   ├── keys.epp
+│   ├── ntp.conf.epp
+│   └── step-tickers.epp
+└── types
+    ├── key_id.pp
+    └── poll_interval.pp
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;hr&gt;
+
+&lt;p&gt;&lt;strong&gt;END&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;I think that covers the fundamentals reasonably well. For a much better, more in depth explanation, see &lt;a href=&quot;https://docs.puppet.com/puppet/4.9/index.html&quot;&gt;the official documentation&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;In the next post, I&amp;rsquo;ll probably cover the set up of a Puppet master and its agents. My initial research shows that there&amp;rsquo;s not much to it, so hopefully it will be a short one.&lt;/p&gt;
+</description>
+        <pubDate>Tue, 21 Mar 2017 05:17:21 -0400</pubDate>
+        <link>http://localhost:4000/2017/03/21/a-puppet-adventure/</link>
+        <guid isPermaLink="true">http://localhost:4000/2017/03/21/a-puppet-adventure/</guid>
+      </item>
+    
+      <item>
+        <title>Configuring Kerberos and Syncrepl GSSAPI auth.</title>
+        <description>&lt;h3&gt;Why Kerberos?&lt;/h3&gt;
+
+&lt;p&gt;For quite some time, I have not been able to configure my OpenLDAP hosts to replicate over TLS successfully. It has been a frustrating experience for a variety of reasons (not the least of which is my naivety); first, debugging OpenLDAP has been a learning experience in and of itself. Once I figured out how to enable logging, deciphering the true meaning for &lt;code&gt;olcLogLevel&lt;/code&gt; directive values was beyond my level of understanding. (It&amp;rsquo;s maybe more accurate to say that interpretting the logs given certain directive values is beyond me.) Instead of making an informed decision, I utilized trial and error to elicit any sort of meaningful logging information. At best, I managed to evoke a generic &lt;code&gt;TLS handshake failure&lt;/code&gt; message. After quite a lot of banging my head against a wall, I felt that I was on the verge of concussion.&lt;/p&gt;
+
+&lt;p&gt;I consigned myself to failure and decided to approach the issue with a different strategy. The problem: replication taking place in cleartext. After some research, I learned that OpenLDAP is generally used in tandem with Kerberos; using Kerberos, OpenLDAP hosts can authenticate via GSSAPI. GSSAPI is a generic interface by which a service can perform all of the functions necessary to enforce confidentiality and authenticity. Kerberos supports a variety of encryption methods, however the default appears to be &lt;code&gt;aes256-cts-hmac-sha1-96&lt;/code&gt; (see &lt;a href=&quot;http://crypto.stackexchange.com/questions/11626/what-does-aes256-cts-hmac-sha1-96-mean-in-relation-to-kerberos&quot;&gt;here&lt;/a&gt;). Consensus seems to indicate that this is perfectly suitable (for a discussion on alternatives, see &lt;a href=&quot;https://blog.cryptographyengineering.com/2012/10/09/so-you-want-to-use-alternative-cipher/&quot;&gt;here&lt;/a&gt;[it&amp;rsquo;s worth noting that MIT Kerberos doesn&amp;rsquo;t support any of the listed alternatives]).&lt;/p&gt;
+
+&lt;p&gt;During the time that it took to configure Kerberos and OpenLDAP, I discovered more ways to effectively debug OpenLDAP and subsequently tracked down the cause of the TLS failure between the two LDAP hosts. After stopping &lt;code&gt;slapd&lt;/code&gt;, I started it in debug mode by running &lt;code&gt;slapd -d 512&lt;/code&gt; (I don&amp;rsquo;t think the debug mode mattered in this case, but it seemed to unearth a log message that indicated a specific certificate issue). The first error message to catch my eye was as follows:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;TLS error -8054:You are attempting to import a cert with the same issuer/serial as an existing cert, but that is not the same cert.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Needless to say I felt quite stupid. I quickly deleted one of the server certificates and regenerated it with a different serial number&amp;hellip; and it worked. At that point, I had functional TLS encryption for replication between the two hosts. Anyhow, let&amp;rsquo;s move on to the configuration of Kerberos.&lt;/p&gt;
+
+&lt;hr&gt;
+
+&lt;h3&gt;Install and configure Kerberos&lt;/h3&gt;
+
+&lt;p&gt;Some documentation found across the internet recommends configuring the master KDC (Key Distribution Center) on the same host as OpenLDAP; I did not do this. I set up a separate host for the KDC, so we&amp;rsquo;ll start with a blank CentOS 6 VM. Assuming basic configuration is done, install the Kerberos server package:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo yum install krb5-server-ldap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;This package includes a schema file that can be used to create an LDIF file that we&amp;rsquo;ll use to configure OpenLDAP to include Kerberos objects and attributes. Using &lt;code&gt;scp&lt;/code&gt;, &lt;code&gt;ftp&lt;/code&gt;, etc., send the schema file to the LDAP hosts. The schema file path is &lt;code&gt;/usr/share/doc/krb5-server-ldap-1.10.3/kerberos.schema&lt;/code&gt;. On the LDAP host, create a new directory; the following steps will generate a lot of files and subdirectories, so it helps to keep everything contained within a staging directory. First, create a dummy &lt;code&gt;.conf&lt;/code&gt; file and insert the following include statement:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;include /path/to/staging/dir/kerberos.schema
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Next, run &lt;code&gt;slaptest&lt;/code&gt; against the dummy &lt;code&gt;.conf&lt;/code&gt; file:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ slaptest -f kerberos.schema -F /path/to/target/dir
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Open the newly created LDIF file:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ vi /path/to/target/dir/cn\=config/cn\=schema/*.ldif
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Delete the following attributes:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;structuralObjectClass: olcSchemaConfig
+entryUUID: 
+creatorsName: cn=config
+createTimestamp: 
+entryCSN: 
+modifiersName: cn=config
+modifyTimestamp: 
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;And change these attributes:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;dn: cn={0}kerberos
+cn: {0}kerberos
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;to reflect the following:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;dn: cn=kerberos,cn=schema,cn=config
+cn: kerberos
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Load the new schema LDIF:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo ldapadd -H ldapi:/// -Y EXTERNAL -f krbschema.ldif
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Verify that the schema has been added:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;sudo ldapsearch -H ldapi:/// -Y EXTERNAL -b &amp;quot;cn=schema,cn=config&amp;quot; dn
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Next, we&amp;rsquo;ll begin to configure OpenLDAP as the Kerberos backend. Create the following LDIF file:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;dn: ou=users,dc=example,dc=com
+ou: Users
+objectClass: top
+objectClass: organizationalUnit
+description: Central location for UNIX users
+
+dn: ou=groups,dc=example,dc=com
+ou: Groups
+objectClass: top
+objectClass: organizationalUnit
+description: Central location for UNIX groups
+
+dn: ou=services,dc=example,dc=com
+ou: Services
+objectClass: top
+objectClass: organizationalUnit
+description: Group for service accounts.
+
+dn: ou=kerberos,ou=services,dc=example,dc=com
+ou: kerberos
+objectClass: top
+objectClass: organizationalUnit
+description: Kerberos OU to store Kerberos principals.
+
+dn: cn=krbadmin,ou=groups,dc=example,dc=com
+objectClass: top
+objectClass: posixGroup
+cn: krbadmin
+gidNumber: 800
+description: Kerberos administrator&amp;#39;s group.
+
+dn: cn=krbadmin,ou=users,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: organizationalPerson
+objectClass: person
+objectClass: posixAccount
+objectClass: top
+cn: krbadmin
+givenName: Kerberos Administrator
+mail: kerberos.admin@example.com
+sn: krbadmin
+uid: krbadmin
+uidNumber: 800
+gidNumber: 800
+homeDirectory: /home/krbadmin
+loginShell: /bin/false
+displayname: Kerberos Administrator
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Load the LDIF file and then change the password for the &lt;code&gt;krbadmin&lt;/code&gt; user:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;ldappasswd -xWSD &amp;quot;cn=admin,dc=example,dc=com&amp;quot; &amp;quot;cn=krbadmin,ou=users,dc=example,dc=com&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;We&amp;rsquo;ll now continue configuration on the KDC. Edit &lt;code&gt;/etc/krb5.conf&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;[logging]
+ default = SYSLOG:INFO:LOCAL1
+ kdc = SYSLOG:NOTICE:LOCAL1
+ admin_server = SYSLOG:WARNING:LOCAL1
+
+[libdefaults]
+ default_realm = EXAMPLE.COM
+ dns_lookup_realm = false
+ dns_lookup_kdc = false
+ ticket_lifetime = 24h
+ renew_lifetime = 7d
+ forwardable = true
+
+[realms]
+ example.COM = {
+  kdc = kdc1.example.com
+  admin_server = kdc1.example.com
+  default_domain = example.com
+  database_module = openldap_ldapconf
+ }
+
+[domain_realm]
+ .example.com = EXAMPLE.COM
+ example.com = EXAMPLE.COM
+
+[appdefaults]
+ pam = {
+  debug = false
+  ticket_lifetime = 36000
+  renew_lifetime = 36000
+  forwardable = true
+  krb4_convert = false
+ }
+
+[dbmodules]
+ openldap_ldapconf = {
+  db_library = kldap
+  ldap_kerberos_container_dn = ou=kerberos,ou=services,dc=example,dc=com
+  ldap_kdc_dn = cn=krbadmin,ou=users,dc=example,dc=com
+   # this object needs to have read rights on
+   # the realm container, principal container and realm sub-trees
+  ldap_kadmind_dn = cn=krbadmin,ou=users,dc=example,dc=com
+   # this object needs to have read and write rights on
+   # the realm container, principal container and realm sub-trees
+  ldap_service_password_file = /etc/krb5.d/stash.keyfile
+  ldap_servers = ldap://ldap1.example.com ldap://ldap2.example.com
+  ldap_conns_per_server = 5
+ }
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Next, edit the ACL file for the &lt;code&gt;kadmind&lt;/code&gt; daemon (&lt;code&gt;/var/kerberos/krb5kdc/kadm5.acl&lt;/code&gt;):&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;*/admin@EXAMPLE.COM *
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Edit &lt;code&gt;/var/kerberos/krb5kdc/kdc.conf&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;[kdcdefaults]
+ kdc_ports = 88
+ kdc_tcp_ports = 88
+
+[realms]
+ EXAMPLE.COM = {
+  #master_key_type = aes256-cts
+  acl_file = /var/kerberos/krb5kdc/kadm5.acl
+  dict_file = /usr/share/dict/words
+  admin_keytab = /var/kerberos/krb5kdc/kadm5.keytab
+  supported_enctypes = aes256-cts:normal aes128-cts:normal des3-hmac-sha1:normal arcfour-hmac:normal des-hmac-sha1:normal des-cbc-md5:normal des-cbc-crc:normal
+ }
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;hr&gt;
+
+&lt;h3&gt;Create the KDC database&lt;/h3&gt;
+
+&lt;p&gt;Create a directory and a &lt;code&gt;stash.keyfile&lt;/code&gt; so that the KDC can authenticate itself to &lt;code&gt;kadmin&lt;/code&gt; and other database utilities:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo mkdir /etc/krb5.d/ &amp;amp;&amp;amp; sudo touch /etc/krb5.d/stash.keyfile
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;The next command will create objects and attributes in our LDAP directory for Kerberos:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo kdb5_ldap_util -D &amp;quot;cn=admin,dc=example,dc=com&amp;quot; create -subtrees &amp;quot;ou=kerberos,ou=services,dc=example,dc=com&amp;quot; -r EXAMPLE.COM -s -H ldap://ldap1.example.com
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Extract the &lt;code&gt;krbadmin&lt;/code&gt; password so that Kerberos can authenticate via the directory:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo kdb5_ldap_util -D &amp;quot;cn=admin,dc=example,dc=com&amp;quot; stashsrvpw -f /etc/krb5.d/stash.keyfile cn=krbadmin,ou=users,dc=example,dc=com
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Enable &lt;code&gt;kadmin&lt;/code&gt; and &lt;code&gt;krb5kdc&lt;/code&gt; on startup:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo chkconfig krb5kdc on &amp;amp;&amp;amp; sudo chkconfig kadmin on
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Finally, start the two services:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo service krb5kdc start &amp;amp;&amp;amp; sudo service kadmin start
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;hr&gt;
+
+&lt;h3&gt;Creating Kerberos principals&lt;/h3&gt;
+
+&lt;p&gt;Run &lt;code&gt;kadmin.local&lt;/code&gt; to start the command-line interface for &lt;code&gt;kadmin&lt;/code&gt;. Begin by creating principals for yourself as both a regular user and admin:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;kadmin.local:  addprinc user@EXAMPLE.COM
+kadmin.local:  addprinc user/admin@EXAMPLE.COM
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;After creating our administrative principal, we can authenticate to the KDC remotely and add principals on each host. On each of the LDAP hosts, install the &lt;code&gt;krb5-workstation&lt;/code&gt; package and run the following commands to create host principals:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo kadmin -p user/admin@EXAMPLE.COM
+kadmin:  addprinc -randkey host/ldap1.example.com@EXAMPLE.COM
+WARNING: no policy specified for host/ldap1.example.com@EXAMPLE.COM; defaulting to no policy
+Principal &amp;quot;host/ldap1.example.com@EXAMPLE.COM&amp;quot; created.
+
+kadmin:  ktadd host/ldap1.example.com@EXAMPLE.COM
+Entry for principal host/ldap1.example.com@EXAMPLE.COM with kvno 4, encryption type aes256-cts-hmac-sha1-96 added to keytab FILE:/etc/krb5.keytab.
+Entry for principal host/ldap1.example.com@EXAMPLE.COM with kvno 4, encryption type aes128-cts-hmac-sha1-96 added to keytab FILE:/etc/krb5.keytab.
+Entry for principal host/ldap1.example.com@EXAMPLE.COM with kvno 4, encryption type des3-cbc-sha1 added to keytab FILE:/etc/krb5.keytab.
+Entry for principal host/ldap1.example.com@EXAMPLE.COM with kvno 4, encryption type arcfour-hmac added to keytab FILE:/etc/krb5.keytab.
+Entry for principal host/ldap1.example.com@EXAMPLE.COM with kvno 4, encryption type des-hmac-sha1 added to keytab FILE:/etc/krb5.keytab.
+Entry for principal host/ldap1.example.com@EXAMPLE.COM with kvno 4, encryption type des-cbc-md5 added to keytab FILE:/etc/krb5.keytab.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Ensure correct ownership of the &lt;code&gt;krb5.keytab&lt;/code&gt; file:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo chown root:ldap /etc/krb5.keytab
+$ sudo chmod 640 /etc/krb5.keytab
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Add the following to &lt;code&gt;/etc/sysconfig/ldap&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;KRB5_KTNAME=/etc/krb5.keytab
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Repeat these steps for the second LDAP host as well.&lt;/p&gt;
+
+&lt;hr&gt;
+
+&lt;h3&gt;Configure OpenLDAP for SASL&lt;/h3&gt;
+
+&lt;p&gt;Create and load the following LDIF file:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;# Configure SASL for our OpenLDAP server.
+
+dn: cn=config
+changetype: modify
+delete: olcSaslSecProps
+-
+add: olcSaslSecProps
+olcSaslSecProps: noanonymous,noplain
+-
+add: olcSaslHost
+olcSaslHost: kdc1.example.com
+-
+add: olcSaslRealm
+olcSaslRealm: EXAMPLE.COM
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;The authentication process is predicated on the presence of a valid Kerberos ticket; we&amp;rsquo;ll want to automate this so we don&amp;rsquo;t have to think about it. I&amp;rsquo;m sure there are several ways to do this, but I&amp;rsquo;ve chosen to use an Upstart job. Create a file in the &lt;code&gt;/etc/init&lt;/code&gt; directory (I chose &lt;code&gt;k5start.conf&lt;/code&gt;) with the following contents:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;start on stopped rc RUNLEVEL=[2345]
+stop on runlevel [!2345]
+respawn
+normal exit 0 1 TERM HUP
+exec /usr/bin/k5start -U -f /etc/krb5.keytab -b -K 10 -l 24h -k /tmp/krb5cc_55 -o ldap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;This job will start &lt;code&gt;k5start&lt;/code&gt; as a background process, ensuring that a valid ticket exists at all times. With everything in place, it&amp;rsquo;s time to configure &lt;code&gt;syncrepl&lt;/code&gt; for GSSAPI. Create an LDIF file with the following contents:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+replace: olcSyncRepl
+olcSyncRepl:
+  rid=001
+  provider=ldap://ldap1.example.com
+  starttls=critical
+  tls_reqcert=allow
+  bindmethod=sasl
+  saslmech=gssapi
+  searchbase=&amp;quot;dc=example,dc=com&amp;quot;
+  type=refreshAndPersist
+  retry=&amp;quot;5 5 300 5&amp;quot;
+  timeout=1
+  interval=00:00:00:10
+olcSyncRepl:
+  rid=002
+  provider=ldap://ldap2.example.com
+  starttls=critical
+  tls_reqcert=allow
+  bindmethod=sasl
+  saslmech=gssapi
+  searchbase=&amp;quot;dc=example,dc=com&amp;quot;
+  type=refreshAndPersist
+  retry=&amp;quot;5 5 300 5&amp;quot;
+  timeout=1
+  interval=00:00:00:10
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;hr&gt;
+
+&lt;h3&gt;Configure clients&lt;/h3&gt;
+
+&lt;p&gt;Finally, we&amp;rsquo;ll configure any client that should authenticate via LDAP and Kerberos; it&amp;rsquo;s pretty much as simple as ensuring that the client is synced via &lt;code&gt;ntpd&lt;/code&gt;, ensuring that the client has a valid Kerberos ticket, and ensuring that all services are installed and configured properly. First prepare the client by installing all of the client tools for Kerberos and LDAP, as well as SSSD:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo yum install sssd openldap-clients krb5-workstation
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;The client&amp;rsquo;s &lt;code&gt;/etc/krb5.conf&lt;/code&gt; file should appear as follows:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;[logging]
+ default = FILE:/var/log/krb5libs.log
+ kdc = FILE:/var/log/krb5kdc.log
+ admin_server = FILE:/var/log/kadmind.log
+
+[libdefaults]
+ default_realm = example.com
+ dns_lookup_realm = false
+ dns_lookup_kdc = false
+ ticket_lifetime = 24h
+ renew_lifetime = 7d
+ forwardable = true
+
+[realms]
+ example.com = {
+  kdc = kdc1.example.com
+  admin_server = kdc1.example.com
+ }
+
+[domain_realm]
+ .example.com = EXAMPLE.COM
+ example.com = EXAMPLE.COM
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Next, configure SSSD via &lt;code&gt;/etc/sssd/sssd.conf&lt;/code&gt;&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;[domain/default]
+
+cache_credentials = True
+krb5_realm = example.com
+krb5_server = kdc1.example.com
+auth_provider = krb5
+chpass_provider = krb5
+
+id_provider = ldap
+ldap_search_base = dc=example,dc=com
+ldap_uri = ldap://ldap1.example.com
+ldap_id_use_start_tls = True
+ldap_tls_cacertdir = /etc/openldap/cacerts
+ldap_tls_cacert = /etc/openldap/cacerts/cacert.pem
+
+[sssd]
+
+services = nss, pam
+domains = default
+
+[nss]
+
+homedir_substring = /home
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Make sure that SSSD is started and enabled on start up:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo chkconfig sssd on &amp;amp;&amp;amp; sudo service sssd start
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Test the client with the following command:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ getent passwd &amp;lt;user&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;If you get a result, everything should be working properly.&lt;/p&gt;
+
+&lt;hr&gt;
+
+&lt;h3&gt;What&amp;rsquo;s next?&lt;/h3&gt;
+
+&lt;p&gt;I think I&amp;rsquo;ve indicated this enough already, but OpenLDAP has posed the most significant challenge so far. Of all the things that contributed to the challenge, I can say that learning how to debug OpenLDAP was at the top. As well, setting up TLS only served to compound any issues as I had never dealt with managing certificates. (In the future, I&amp;rsquo;ll try to establish a more formal process for PKI using a centralized certificate authority—I think this would&amp;rsquo;ve prevented the issue in the first place since &lt;code&gt;certutil&lt;/code&gt; would&amp;rsquo;ve likely complained about duplicate serial numbers and certificate subjects.) Anyhow, the next steps I plan to take deviate from the IConrad list; after learning a bit (and after being pointed towards &lt;a href=&quot;https://www.reddit.com/r/linuxadmin/comments/4n70ku/advice_for_starting_a_job_in_this_field/d42plhv/&quot;&gt;this&lt;/a&gt;), it&amp;rsquo;s become apparent that the logical order of the list is&amp;hellip; a bit illogical. I&amp;rsquo;m going to migrate my Spacewalk server from the hypervisor to a VM and move from there into Puppetizing everything. I also have one vestigial regret from the decisions I made during the setup process of my homelab: I really wish that I had used LVM or ZFS. Maybe I&amp;rsquo;ll make that the next step after getting Puppet off the ground&amp;hellip;&lt;/p&gt;
+</description>
+        <pubDate>Fri, 03 Mar 2017 07:43:12 -0500</pubDate>
+        <link>http://localhost:4000/2017/03/03/Kerberos-and-LDAP/</link>
+        <guid isPermaLink="true">http://localhost:4000/2017/03/03/Kerberos-and-LDAP/</guid>
+      </item>
+    
+      <item>
+        <title>Configuring N-Way Multimaster Replication.</title>
+        <description>&lt;h3&gt;Introduction&lt;/h3&gt;
+
+&lt;p&gt;In the last post, we covered how to set up basic LDAP hosts with StartTLS enabled. We&amp;rsquo;ll continue to configure our LDAP setup to enable replication between two hosts. This can be achieved through a variety of methods, but each works towards the same end result: redundancy. OpenLDAP replicates per directory information tree or DIT fragment. Each host uses a replication engine called &lt;code&gt;syncrepl&lt;/code&gt; (short for Sync Replication). In this tutorial, we&amp;rsquo;ll configure two hosts to function both as providers and consumers. OpenLDAP refers to this configuration as N-Way Multimaster Replication.&lt;/p&gt;
+
+&lt;h3&gt;OpenLDAP trials and tribulations&lt;/h3&gt;
+
+&lt;p&gt;So far we&amp;rsquo;ve managed to avoid configuring our OpenLDAP server directly. To recap, we&amp;rsquo;ve only directly interacted with our server by starting it and performing a search against it. &lt;/p&gt;
+
+&lt;p&gt;When I first installed OpenLDAP, I (naively) expected the configuration process to take place via editing static configuration files with a text editor. Confusion mounted as I browsed the official documentation and its &amp;ldquo;Quick-Start Guide&amp;rdquo;:&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;Edit the configuration file.&lt;/strong&gt;
+Use your favorite editor to edit the provided slapd.ldif example (usually installed as /usr/local/etc/openldap/slapd.ldif) to contain a MDB database definition of the form:&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;dn: olcDatabase=mdb,cn=config
+&amp;hellip;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;I had no idea what an LDIF file was, so I assumed (again in ignorance) that perhaps this was just an idiosyncratic way of referring to a configuration file, so I went searching for &lt;code&gt;slapd.ldif&lt;/code&gt;. No luck. I thought to myself, &amp;ldquo;surely they have some sort of &lt;code&gt;.conf&lt;/code&gt; file somewhere?&amp;rdquo; And so I searched for other sources. After some time, I began to form some sort of aggregate consensus drawn from popular sources such as the Gentoo wiki, ArchWiki, CentOS documentation, and a smattering of blogs. The indication seemed to point towards configuration via &lt;code&gt;slapd.conf&lt;/code&gt;. &amp;ldquo;Alright, then. Let&amp;rsquo;s give it an edit!&amp;rdquo; Off I went to make some edits. To my chagrin, there was no such file. At this point, confusion transformed into consternation and frustration. I began to curse OpenLDAP and its documentation.&lt;/p&gt;
+
+&lt;p&gt;After some more time and research, I began to understand that &lt;code&gt;slapd.conf&lt;/code&gt; had been deprecated long ago. The documentation made no mention of this. It did not explain its new alternative. I found it difficult to find a terse and concise explanation of the proper method for configuring OpenLDAP. Ultimately I referred to documentation found on &lt;a href=&quot;http://www.zytrax.com/books/ldap/&quot;&gt;www.zytrax.com&lt;/a&gt;. I&amp;rsquo;d used this source for learning DNS and found that the authors have a deep understanding and do their best to infuse levity wherever possible.&lt;/p&gt;
+
+&lt;h3&gt;How OpenLDAP handles configuration&lt;/h3&gt;
+
+&lt;p&gt;I&amp;rsquo;d like to make an attempt at providing what I couldn&amp;rsquo;t find when I started to learn OpenLDAP: a concise explanation of OpenLDAP&amp;rsquo;s preferred method of configuration. Generally, you&amp;rsquo;ll find that the configuration of OpenLDAP is referred to broadly using multiple terms: On-Line Configuration (OLC), &lt;code&gt;cn=config&lt;/code&gt;, and &lt;code&gt;slapd.d&lt;/code&gt; configuration. I prefer OLC because all configuration entries contain this acronym in their names. OpenLDAP deprecated &lt;code&gt;slapd.conf&lt;/code&gt; to implement OLC&amp;rsquo;s primary benefit—&lt;strong&gt;On-Line&lt;/strong&gt; configuration. Previously, if a change was made to OpenLDAP&amp;rsquo;s configuaration, the server would likely need to be restarted for the change to take effect. Now, OpenLDAP expects changes to configuration the same way it expects changes and additions to a DIT: via &lt;code&gt;ldapadd&lt;/code&gt; and &lt;code&gt;ldapmodify&lt;/code&gt;. Instead of a flat config file, OpenLDAP stores its configuration details in a configuration directory, &lt;code&gt;/etc/openldap/slapd.d/cn=config&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;This is all well and good, but this leaves many questions unanswered. How do you actually make changes? How do you browse current configuration entries? I found it beneficial to first understand how to search and browse the configuration database. Other guides might recommend the installation of a browser based LDAP client such as phpLDAPadmin. In any case, beginning to understand the intricacies of configuration is important and will take time. Once you know &lt;em&gt;what&lt;/em&gt; to configure, you may begin to understand LDAP&amp;rsquo;s idiosyncratic expectations.&lt;/p&gt;
+
+&lt;h3&gt;How to browse and change configuration entries&lt;/h3&gt;
+
+&lt;p&gt;My preferred method for browsing &lt;code&gt;cn=config&lt;/code&gt; is anything but elegant—search the entire thing at once:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo ldapsearch -H ldapi:/// -Y EXTERNAL -b &amp;quot;cn=config&amp;quot; -LLL | less
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Expect a pretty volumonous output. Using &lt;code&gt;less&lt;/code&gt;, you can utilize &lt;code&gt;/&lt;/code&gt; to search for entries and attributes. After verifying the entry that needs changing, an LDIF file can be created. LDIF files are sent to an LDAP server to make changes, facilitating local and remote modifications (this is the whole point of LDAP). Using &lt;code&gt;olcSuffix&lt;/code&gt; as an example, the following is generally what you&amp;rsquo;d expect from an LDIF file:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+replace: olcSuffix
+olcSuffix: dc=internal,dc=tminor,dc=io
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;At first, this format appears quite cumbersome. Examining the contents presented here might help to better understand the function of these files:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Line one tells OpenLDAP where to look for the entry that needs to be changed. In this case, we&amp;rsquo;re telling it to look under &lt;code&gt;olcDatabase={2}bdb&lt;/code&gt; which itself resides under &lt;code&gt;cn=config&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Line 2 specifies the &lt;code&gt;changetype&lt;/code&gt;; if the attribute exists, it should be &lt;code&gt;modify&lt;/code&gt;, as in this case.&lt;/li&gt;
+&lt;li&gt;Line 3 indicates the entry to be modified and the action to be taken upon it; &amp;ldquo;replace&amp;rdquo; if the entry already exists with a value or &amp;ldquo;add&amp;rdquo; if an entry is to be newly created.&lt;/li&gt;
+&lt;li&gt;Line 4 tells OpenLDAP what the new attribute-value assignment should be for the entry.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;After creating the file, it can be sent to the OpenLDAP server via &lt;code&gt;ldapadd&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;sudo ldapadd -H ldapi:/// -Y EXTERNAL -f &amp;lt;filename&amp;gt;.ldif
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h3&gt;Basic DIT&lt;/h3&gt;
+
+&lt;p&gt;Before setting up replication, we need a DIT to replicate. Before actually creating the DIT, we need to specify some information in &lt;code&gt;cn=config&lt;/code&gt;: &lt;code&gt;olcSuffix&lt;/code&gt;, &lt;code&gt;olcRootDN&lt;/code&gt;, &lt;code&gt;olcRootPW&lt;/code&gt;, and &lt;code&gt;olcAccess&lt;/code&gt;. Before continuing, a password will need to be generated using &lt;code&gt;slappasswd&lt;/code&gt;. OpenLDAP stores passwords unencrypted by default; &lt;code&gt;slappasswd&lt;/code&gt; accepts an input and provides a hashed output.&lt;/p&gt;
+
+&lt;p&gt;Open a file—naming it root.ldif—and enter the following, changing entries where necessary:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+replace: olcSuffix
+olcSuffix: dc=example,dc=com
+
+dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+replace: olcRootDN
+olcRootDN: cn=Manager,dc=example,dc=com
+
+dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+add: olcRootPW
+olcRootPW: {SSHA}rTy9d6kXWfku6CRso8e9YmCzlZzk2woj
+
+dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+add: olcAccess
+olcAccess: {0}to attrs=userPassword,shadowLastChange by
+  dn=&amp;quot;cn=Manager,dc=example,dc=com&amp;quot; write by anonymous auth by self write by * none
+olcAccess: {1}to dn.base=&amp;quot;&amp;quot; by * read
+olcAccess: {2}to * by dn=&amp;quot;cn=Manager,dc=example,dc=com&amp;quot; write by * read
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;The above ACL has the general effect of restricting configuration to the root user on the host itself. For more information on formulating ACLs, see &lt;a href=&quot;http://www.openldap.org/doc/admin24/access-control.html&quot;&gt;the OpenLDAP Administrator&amp;rsquo;s Guide&lt;/a&gt;. Next, we&amp;rsquo;ll populate the DIT with some very basic information:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;dn: dc=example,dc=com
+objectClass: top
+objectClass: dcObject
+objectclass: organization
+o: Homelab
+dc: example
+
+dn: cn=Manager,dc=example,dc=com
+objectClass: organizationalRole
+cn: Manager
+description: Directory Manager
+
+dn: ou=People,dc=example,dc=com
+objectClass: organizationalUnit
+ou: People
+
+dn: ou=Group,dc=example,dc=com
+objectClass: organizationalUnit
+ou: Group
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Now the DIT is ready for replication.&lt;/p&gt;
+
+&lt;h3&gt;Configure the LDAP hosts for replication&lt;/h3&gt;
+
+&lt;p&gt;Open a file with your favorite text editor; call the file &lt;code&gt;mod_syncprov.ldif&lt;/code&gt;. Enter the following contents:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;dn: cn=module,cn=config
+objectClass: olcModuleList
+cn: module
+olcModulePath: /usr/lib64/openldap
+olcModuleLoad: syncprov.la
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;This file will load the module that allows &lt;code&gt;syncrepl&lt;/code&gt; to provide updates during the replication process. Depending on your OS and the method you chose to install OpenLDAP, it may be necessary to change the &lt;code&gt;olcModulePath&lt;/code&gt;. Load the file:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo ldapadd -H ldapi:// -Y EXTERNAL -f mod_syncprov.ldif
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Next, create a file called &lt;code&gt;syncprov.ldif&lt;/code&gt; with the following contents:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;dn: olcOverlay=syncprov,olcDatabase={2}bdb,cn=config
+objectClass: olcOverlayConfig
+objectClass: olcSyncProvConfig
+olcOverlay: syncprov
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Add the file:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo ldapadd -H ldapi:/// -Y EXTERNAL -f syncprov.ldif
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;For a better understanding of overlays and their functions, you can start &lt;a href=&quot;http://www.openldap.org/faq/data/cache/1169.html&quot;&gt;here&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;Next, we&amp;rsquo;ll concoct an LDIF file to configure the host as a provider:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;dn: cn=config
+changetype: modify
+add: olcServerID
+olcServerID: 1 $URL1
+olcServerID: 2 $URL2
+
+dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+add: olcSyncRepl
+olcSyncRepl:
+  rid=001
+  provider=$URL1
+  binddn=&amp;quot;cn=Manager,dc=example,dc=com&amp;quot;
+  bindmethod=simple
+  credentials=&amp;lt;password&amp;gt;
+  searchbase=&amp;quot;dc=example,dc=com&amp;quot;
+  type=refreshAndPersist
+  retry=&amp;quot;5 5 300 5&amp;quot;
+  timeout=1
+  interval=00:00:00:10
+olcSyncRepl:
+  rid=002
+  provider=$URL2
+  binddn=&amp;quot;cn=Manager,dc=example,dc=com&amp;quot;&amp;quot;
+  bindmethod=simple
+  credentials=&amp;lt;password&amp;gt;
+  searchbase=&amp;quot;dc=example,dc=com&amp;quot;
+  type=refreshAndPersist
+  retry=&amp;quot;5 5 300 5&amp;quot;
+  timeout=1
+  interval=00:00:00:10
+-
+add: olcMirrorMode
+olcMirrorMode: TRUE
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Save the file and send it:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo ldapmodify -H ldapi:/// -Y EXTERNAL -f provider.ldif
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;For more information about replication types and how to configure them, see the &lt;a href=&quot;http://www.openldap.org/doc/admin24/guide.html#Replication&quot;&gt;Administrator&amp;rsquo;s Guide&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;At this point the two LDAP servers should be replicating the DIT; to verify that everything is functioning properly, logging needs to be enabled. Create another LDIF file and enter the following information:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;dn: cn=config
+changetype: modify
+replace: olcLogLevel
+olcLogLevel: stats sync
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Load the file with &lt;code&gt;ldapmodify&lt;/code&gt;. Next, configure &lt;code&gt;rsyslog&lt;/code&gt; to write the logs to the desired location. Open &lt;code&gt;/etc/rsyslog.conf&lt;/code&gt; and append the following line to the end of the file:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;local4.*    /var/log/sldapd.log
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Restart &lt;code&gt;rsyslog&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo service rsyslog restart
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;OpenLDAP is now configured for replication.&lt;/p&gt;
+
+&lt;h3&gt;Securing LDAP&lt;/h3&gt;
+
+&lt;p&gt;One thing to be wary of with the above setup is that replication between the two hosts is not secured; authentication takes place in the clear. &lt;code&gt;syncrepl&lt;/code&gt; does allow for StartTLS using the simple bind method but I could not get it to work with Mozilla NSS (perhaps user error). As an alternative I&amp;rsquo;ve decided instead to use Kerberos and GSSAPI based encryption. In the next post I&amp;rsquo;ll go over securing OpenLDAP.&lt;/p&gt;
+</description>
+        <pubDate>Fri, 27 Jan 2017 12:09:39 -0500</pubDate>
+        <link>http://localhost:4000/2017/01/27/iconrad-5/</link>
+        <guid isPermaLink="true">http://localhost:4000/2017/01/27/iconrad-5/</guid>
+      </item>
+    
+      <item>
+        <title>Configuring LDAP and StartTLS.</title>
+        <description>&lt;h3&gt;Introduction&lt;/h3&gt;
+
+&lt;p&gt;This post serves as a point of demarcation between completed steps and steps in progress. If you&amp;rsquo;re following along, installing OpenLDAP is step 4 as delineated &lt;a href=&quot;https://www.reddit.com/r/linuxadmin/comments/2s924h/how_did_you_get_your_start/cnnw1ma/&quot;&gt;here&lt;/a&gt;. Everything up to this point was a challenge for me but certainly not insurmountbale. OpenLDAP, on the other hand, has been the most obtuse thing I&amp;rsquo;ve tackled so far. With some time, however, I was able to establish some steps that produced reliable results while setting OpenLDAP. It should be mentioned that this process uses self-signed certificates.&lt;/p&gt;
+
+&lt;hr&gt;
+
+&lt;p&gt;Starting with a fresh VM with a CentOS 6 minimal image, install all of the packages necessary for running OpenLDAP:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo yum install openldap-clients pam_ldap nss-pam-ldapd pam_krb5 sssd migrationtools openldap-servers openldap openldap-devel
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Next, move &lt;code&gt;/etc/openldap/certs&lt;/code&gt; and create a new certificate directory:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo mv /etc/openldap/certs{,_bak} &amp;amp;&amp;amp; sudo mkdir /etc/openldap/certs
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;This directory will serve as the &lt;code&gt;moznss&lt;/code&gt; certificate database for OpenLDAP. &lt;code&gt;certutil&lt;/code&gt; is used to manage this directory; its analogues would be &lt;code&gt;openssl&lt;/code&gt; and GnuTLS tools such as &lt;code&gt;certtool&lt;/code&gt;. &lt;code&gt;moznss&lt;/code&gt;&amp;lsquo;s effectiveness for OpenLDAP certificate management seems to be debatable. When browsing OpenLDAP lists while troubleshooting, I noticed many instances of OpenLDAP developers disparaging this method as buggy and inconsistent. Unfortunately for me, I decided to do it the Red Hat way and used the version available via Red Hat repositories. &lt;/p&gt;
+
+&lt;p&gt;Prepare the directory for &lt;code&gt;certutil&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ echo &amp;quot;&amp;lt;password&amp;gt;&amp;quot; &amp;gt; password
+$ echo &amp;quot;&amp;lt;type randomly&amp;gt;&amp;quot; &amp;gt;&amp;gt; noise.txt
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;The database needs a password; this database stores private keys, so &amp;ldquo;password&amp;rdquo; is probably not the best choice. Move the password file to the &lt;code&gt;certs&lt;/code&gt; directory and associate it with the database:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo mv password /etc/openldap/certs/
+$ sudo certutil -N -d /etc/openldap/certs -f /etc/openldap/certs/password
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Generate a new key pair for the root certificate:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo certutil -G -d /etc/openldap/certs -z noise.txt -f /etc/openldap/certs/password
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Generate the root certificate:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo certutil -S -n &amp;quot;CA certificate&amp;quot; -s &amp;quot;cn=CAcert&amp;quot; -x -t &amp;quot;CT,,&amp;quot; -m 1000 -v 120 -d /etc/openldap/certs -z noise.txt -f /etc/openldap/certs/password
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Use the newly created root certificate to sign and generate a certificate for the LDAP server:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo certutil -S -n &amp;quot;OpenLDAP Server&amp;quot; -s &amp;quot;cn=ldap1.example.com&amp;quot; -c &amp;quot;CA certificate&amp;quot; -t &amp;quot;u,u,u&amp;quot; -m 1001 -v 120 -d /etc/openldap/certs -z noise.txt -f /etc/openldap/certs/password
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Export the root certificate so that it can be used later:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo pk12util -d /etc/openldap/certs -o cacert.p12 -n &amp;quot;CA certificate&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Keep in mind that this is the root certificate; keep it secure and use a good password to encrypt it. Export the CA certificate for use by LDAP clients:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo certutil -L -d /etc/openldap/certs -n &amp;quot;CA certificate&amp;quot; -a &amp;gt; cacert.pem
+$ sudo mkdir /etc/openldap/cacerts &amp;amp;&amp;amp; sudo cp /etc/openldap/certs/cacert.pem /etc/openldap/cacerts/
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Make all files readable in the certificate database directory:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo chmod 644 /etc/openldap/certs/*
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Enable &lt;code&gt;ldaps://&lt;/code&gt; by editing &lt;code&gt;/etc/sysconfig/ldap&lt;/code&gt; with your favorite text editor:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;&amp;lt;snip&amp;gt;
+SLAPD_LDAPS=yes
+&amp;lt;/snip&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Next, set up the LDAP database using the default configuration:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG
+$ sudo chown -Rf ldap:ldap /var/lib/ldap
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;With the basics now set up and configured, start the &lt;code&gt;slapd&lt;/code&gt; service (OpenLDAP&amp;rsquo;s daemon) and enable it on startup:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo service slapd start
+$ sudo chkconfig enable slapd
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;With server-side configuration complete, configure client settings by running &lt;code&gt;authconfig-tui&lt;/code&gt;. (The documentation for &lt;code&gt;authconfig-tui&lt;/code&gt; reports that it is deprecated):&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;[*] Use LDAP
+[*] Use LDAP Authentication
+&amp;lt;Next&amp;gt;
+[*] Use TLS
+Server: ldap://ldapserver.localdomain/
+Base DN: dc=localdomain,dc=com
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Be sure to alter the above to reflect the actual domain name and domain components (dc=).&lt;/p&gt;
+
+&lt;p&gt;OpenLDAP uses a client configuration file, &lt;code&gt;/etc/openldap/ldap.conf&lt;/code&gt;. The default configuration file may work, however it may be necessary to add an additional configuration parameter (&lt;code&gt;TLS_REQCERT&lt;/code&gt;) to enable StartTLS using a self-signed cert. Open up the client config file and append the following:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;TLS_REQCERT allow
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Now the server is ready to be tested. First, try an unencrypted search:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ ldapsearch -H ldap:// -x -s base -b &amp;quot;&amp;quot; -LLL &amp;quot;configContext&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;If successful, expect the following:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;dn:
+configContext: cn=config
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Once it&amp;rsquo;s verified that unencrypted searches are functioning properly, append the &lt;code&gt;-ZZ&lt;/code&gt; option, forcing StartTLS. If the search fails, expect an error; if this is the case, append &lt;code&gt;-d -1&lt;/code&gt; for debug output. In some cases, I found it necessary to regenerate the certs and cert database. &lt;/p&gt;
+
+&lt;hr&gt;
+
+&lt;h3&gt;Conclusion&lt;/h3&gt;
+
+&lt;p&gt;The next post will cover setting up N-Way Multimaster replication.&lt;/p&gt;
+</description>
+        <pubDate>Wed, 11 Jan 2017 22:45:56 -0500</pubDate>
+        <link>http://localhost:4000/2017/01/11/iconrad-4/</link>
+        <guid isPermaLink="true">http://localhost:4000/2017/01/11/iconrad-4/</guid>
+      </item>
+    
+      <item>
+        <title>Configuring a name server.</title>
+        <description>&lt;h3&gt;Introduction&lt;/h3&gt;
+
+&lt;p&gt;Now that we have a method to easily spin up VMs, we&amp;rsquo;ll configure a name server for our environment. The name server will use BIND DNS for name resolution and will also use ISC&amp;rsquo;s DHCP daemon for dynamic IP configuration. We&amp;rsquo;ll configure the two to work together to provide dynamic DNS (DDNS).&lt;/p&gt;
+
+&lt;hr&gt;
+
+&lt;h3&gt;Install and configure BIND DNS&lt;/h3&gt;
+
+&lt;p&gt;In order to install the VM, adjust the script referenced in the &lt;a href=&quot;https://blog.tminor.io/2016/12/27/iconrad-project-2/&quot;&gt;last post&lt;/a&gt; and run it. If all goes well, the installation should take care of itself. Set up a non-root administrative user. &lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;# useradd -G wheel &amp;lt;user&amp;gt;
+# passwd &amp;lt;user&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Once the user is created, run &lt;code&gt;visudo&lt;/code&gt; in order to allow users in the &lt;code&gt;wheel&lt;/code&gt; group &lt;code&gt;sudo&lt;/code&gt; permissions. With the file open, search using &lt;code&gt;/&lt;/code&gt; for the term &lt;code&gt;wheel&lt;/code&gt;. Uncomment the line as seen below:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;## Allows people in group wheel to run all commands
+ %wheel ALL=(ALL)       ALL
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Save the file using &lt;code&gt;:wq&lt;/code&gt; and logout. Login the newly created user. Install BIND:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ yum install bind bind-utils
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;BIND&amp;rsquo;s primary config file is &lt;code&gt;/etc/named.conf&lt;/code&gt;. Open this file and find the &lt;code&gt;options&lt;/code&gt; block. Above this, create an ACL block using the following syntax:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;&amp;lt;snip&amp;gt;
+
+acl &amp;quot;trusted&amp;quot; {
+        192.168.1.0/24; // Allows 192.168.1 subnet 
+        127.0.0.1; // Allow from localhost
+};
+
+&amp;lt;/snip&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;This example ACL allows all traffic from the private network address &lt;code&gt;192.168.1.0&lt;/code&gt;. If your name server were publically reachable, it may be advisable to use such an ACL to avoid attacks that could render the system unusable. Any host specified in the ACL will be able to perform recursive lookups against the name server. Next, edit the &lt;code&gt;options&lt;/code&gt; block to reflect the following:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;options {
+        listen-on port 53 { 127.0.0.1; 192.168.1.3; };
+        listen-on-v6 port 53 { ::1; };
+        directory       &amp;quot;/var/named&amp;quot;;
+        dump-file       &amp;quot;/var/named/data/cache_dump.db&amp;quot;;
+        statistics-file &amp;quot;/var/named/data/named_stats.txt&amp;quot;;
+        memstatistics-file &amp;quot;/var/named/data/named_mem_stats.txt&amp;quot;;
+        allow-query     { trusted; };   # Allows queries from &amp;quot;trusted&amp;quot; hosts
+
+        recursion yes;
+
+        dnssec-enable yes;
+        dnssec-validation yes;
+
+        /* Path to ISC DLV key */
+        bindkeys-file &amp;quot;/etc/named.iscdlv.key&amp;quot;;
+
+        managed-keys-directory &amp;quot;/var/named/dynamic&amp;quot;;
+};
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;This block specifies options such as those related to &lt;code&gt;dnssec&lt;/code&gt; which is used to securely configure the server for DDNS. The values above are default. Recursion is set to &lt;code&gt;yes&lt;/code&gt;; if this is the desired value, make sure that the ACL block is configured properly to allow only specific clients to use the system recursively. Ensure also that the server is listening on port 53 and that the host&amp;rsquo;s IP address is listed after the loopback address (it could be listed before, so the order doesn&amp;rsquo;t matter).&lt;/p&gt;
+
+&lt;p&gt;At the end of the file, add &lt;code&gt;include /etc/named/named.conf.local&lt;/code&gt;. This file is used to indicate all local zone information for reverse and forward zones:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;&amp;lt;snip&amp;gt;
+
+zone ‘‘area.example.com’’ {
+        type master;
+        file ‘‘/etc/named/zones/db.area.example.com’’;
+};
+
+zone ‘‘1.168.192.in-addr.arpa’’ {
+        type master;
+        file ‘‘/etc/named/zones/db.192.168.1’’;
+};
+
+&amp;lt;/snip&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;These files will be used to specify hostnames and the IP addresses that they should be resolved to. Create a zone file for the forward zone in &lt;code&gt;/etc/named/zones&lt;/code&gt;. The general form should be as follows:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ORIGIN example.com.
+$TTL 604800     ; 1 week
+example.com.      IN SOA  ns1.example.com. admin.example.com. (
+                                82         ; serial
+                                604800     ; refresh (1 week)
+                                86400      ; retry (1 day)
+                                2419200    ; expire (4 weeks)
+                                604800     ; minimum (1 week)
+                                )
+
+                        NS      ns1.example.com.
+
+ns1                     A       192.168.1.3
+
+$TTL 21600      ; 6 hours
+
+ntp1                    A       192.168.1.22
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;The file contains, generally, resource records (RRs) and directives. Anything preceded by a &lt;code&gt;$&lt;/code&gt; is a directive. In this file, the &lt;code&gt;$ORIGIN&lt;/code&gt; directive is a variable that contains the domain for the hosts listed below it. For example, the &lt;code&gt;A&lt;/code&gt; record for ns1 would be completed by appending the &lt;code&gt;$ORIGIN&lt;/code&gt; value, resulting in &lt;code&gt;ns1.example.com.&lt;/code&gt;. The &lt;code&gt;$TTL&lt;/code&gt; value dictates the time to live for a resource record. This determines the amount of time that referring recursive servers cache a record before requesting an update. The first resource record in a zone file is the Start of Authority, or SOA RR. This defines many different values, such as the contact for the domain and other general information. The reverse zone file contains the same information but uses &lt;code&gt;PTR&lt;/code&gt; records for reverse IP to name mappings. See the following for an example:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;;
+; Reverse zone file for 1.168.192.IN-ADDR.ARPA.
+;
+$ORIGIN 1.168.192.IN-ADDR.ARPA.
+$TTL 604800     ;1W default TTL for zone
+@       IN      SOA     ns1.example.com. admin.example.com. (
+                        3               ; Serial
+                        604800          ; Refresh
+                        86400           ; Retry
+                        2419200         ; Expire
+                        604800 )        ; Negative Cache TTL
+
+; name servers - NS records
+        IN      NS      ns1.example.com.
+
+; PTR Records
+200     IN      PTR     host.example.com.     ; 192.168.1.200
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;After configuring the forward and reverse zone files, check for syntax errors:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ named-checkconf
+$ named-checkzone example.com /etc/named/zones/db.area.example.com
+$ named-checkzone 1.168.192.in-addr.arpa /etc/named/zones/db.192.168.1
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Ensure that &lt;code&gt;named&lt;/code&gt; is configured to start during the boot process:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo chkconfig named on
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;hr&gt;
+
+&lt;h3&gt;Install and configure DHCP&lt;/h3&gt;
+
+&lt;p&gt;Install ISC&amp;rsquo;s DHCP daemon:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ sudo yum install dhcp
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;The main configuration file for &lt;code&gt;dhcpd&lt;/code&gt; is &lt;code&gt;/etc/dhcpd/dhcpd.conf&lt;/code&gt;. Open it and adjust the configuration to reflect the following:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;# DHCP Config for homelab, IP addresses 192.168.1.2-254
+
+authoritative;
+
+# Use recommended update scheme
+ddns-updates on;
+ddns-update-style interim;
+allow client-updates;
+update-static-leases on;
+
+ddns-domainname &amp;quot;example.com.&amp;quot;;
+ddns-rev-domainname &amp;quot;in-addr.arpa.&amp;quot;;
+
+# Specify the location of the TSIG key file
+include &amp;quot;/etc/named/DDNS_UPDATE&amp;quot;;
+
+# add a zone block for each forward and reverse zone
+zone example.com. {
+        primary 127.0.0.1;
+        key &amp;quot;DDNS_UPDATE&amp;quot;;
+}
+
+zone 1.168.192.in-addr.arpa. {
+        primary 127.0.0.1;
+        key &amp;quot;DDNS_UPDATE&amp;quot;;
+}
+
+# Declare the subnet and its options
+subnet 192.168.1.0 netmask 255.255.255.0 {
+        option routers                  192.168.1.1;
+        option subnet-mask              255.255.255.0;
+
+        option domain-name              &amp;quot;example.com&amp;quot;;
+        option domain-name-servers       192.168.1.3; # ns1.example.com
+
+        option time-offset              -18000;         # Eastern Standard Time
+
+        range 192.168.1.2 192.168.1.254;
+
+#       Be sure to specify any statically addressed hosts
+        host ns1 {
+                ddns-hostname &amp;quot;ns1&amp;quot;;
+                hardware ethernet 52:54:00:5E:3F:AF;
+                fixed-address 192.168.100.3;
+        }
+}
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;I personally had a difficult time getting DDNS working because I chose to statically address my name server. If this is the case for you, make sure you specify any such hosts. &lt;/p&gt;
+
+&lt;p&gt;In order to secure DDNS, &lt;code&gt;named&lt;/code&gt; and &lt;code&gt;dhcpd&lt;/code&gt; can use a TSIG key for authenticated updates to the DNS zone files. Generate a file containing the TSIG key:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ dnssec-keygen -a HMAC-SHA1 -b 128 -r /dev/urandom -n &amp;lt;ddns.key.file&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;This command will create two files, &lt;code&gt;Kdhcpi_updater.*.key&lt;/code&gt; and &lt;code&gt;Kdhcp_updater.*.private&lt;/code&gt;. Copy the key from the &lt;code&gt;*.private&lt;/code&gt; file and copy it into the TSIG key file. The file can be named arbitrarily, however the syntax should conform to the following:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;key &amp;lt;key-name&amp;gt; {
+        algorithm HMAC-MD5.SIG-ALG.REG.INT;
+        secret &amp;lt;key&amp;gt;;
+};
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Create two copies and move them into the configuration directories for &lt;code&gt;named&lt;/code&gt; and &lt;code&gt;dhcpd&lt;/code&gt;. Change the files to be read-only for users and groups &lt;code&gt;named&lt;/code&gt; and &lt;code&gt;dhcpd&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;$ chown named:named /path/to/key
+$ chmod 400 /path/to/key
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Alter &lt;code&gt;/etc/named/named.conf.local&lt;/code&gt; to reflect the following:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;include &amp;quot;/etc/named/ddns.key&amp;quot;;
+
+zone &amp;quot;example.com&amp;quot; {
+        type master;
+        file &amp;quot;/etc/named/zones/db.example.com&amp;quot;; # zone file path
+        allow-update { key &amp;quot;ddns.key&amp;quot;; };
+};
+
+zone &amp;quot;1.168.192.in-addr.arpa&amp;quot; {
+        type master;
+        file &amp;quot;/etc/named/zones/db.192.168.1&amp;quot;;  # 192.168.1.0/24 subnet
+        allow-update { key &amp;quot;ddns.key&amp;quot;; };
+};
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;At this point, all necessary configuration has been completed to accommodate dynamic DNS updates; to test, make sure the test host&amp;rsquo;s primary network interface configuration file (usually &lt;code&gt;/etc/sysconfig/network-scripts/ifcfg-eth0&lt;/code&gt;) contains the directive to enable DHCP:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;BOOTPROTO=&amp;quot;dhcp&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Also, make sure to comment out any lines that specify static IP address configuration. Reboot the machine to test whether the machine attains an IP address from the DHCP server. If not, enable logging for &lt;code&gt;named&lt;/code&gt; and &lt;code&gt;dhcpd&lt;/code&gt;. &lt;/p&gt;
+
+&lt;hr&gt;
+
+&lt;h3&gt;Logging&lt;/h3&gt;
+
+&lt;p&gt;To enable &lt;code&gt;named&lt;/code&gt; logging, insert a log clause in any of &lt;code&gt;named&lt;/code&gt;&amp;lsquo;s configuration files. I&amp;rsquo;d probably advise doing this in the main config file. The should conform to the following syntax:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;logging{
+  channel simple_log {
+    file &amp;quot;/var/log/named/bind.log&amp;quot; versions 3 size 5m;
+    severity warning;
+    print-time yes;
+    print-severity yes;
+    print-category yes;
+  };
+  category default{
+    simple_log;
+  };
+};
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;For more information on the options within the clause, see &lt;a href=&quot;http://www.zytrax.com/books/dns/ch7/logging.html&quot;&gt;here&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;dhcpd&lt;/code&gt;&amp;rsquo;s default logging is found via &lt;code&gt;syslog&lt;/code&gt;. If you don&amp;rsquo;t like this, add a line such as the following to &lt;code&gt;/etc/syslog.conf&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-text&quot; data-lang=&quot;text&quot;&gt;local0.debug    /var/log/dhcpd
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;In extreme cases, packet capturing tools such as &lt;code&gt;tcpdump&lt;/code&gt; may be necessary.&lt;/p&gt;
+
+&lt;hr&gt;
+
+&lt;h3&gt;Conclusion&lt;/h3&gt;
+
+&lt;p&gt;After following the above guide, VMs should be able to boot and automatically attain an IP address, register their host names via DDNS, and perform recursive DNS requests against the name server. Next up is OpenLDAP and Kerberos.&lt;/p&gt;
+</description>
+        <pubDate>Sun, 01 Jan 2017 21:36:17 -0500</pubDate>
+        <link>http://localhost:4000/2017/01/01/iconrad-3-project/</link>
+        <guid isPermaLink="true">http://localhost:4000/2017/01/01/iconrad-3-project/</guid>
+      </item>
+    
+  </channel>
+</rss>

@@ -1,0 +1,302 @@
+<html>
+  <head>
+    <meta content='Installing Spacewalk and KVM VMs. - tminor.io' property='og:title' />
+    <title>Installing Spacewalk and KVM VMs. - tminor.io</title>
+    <link href='http://localhost:4000/images/fav.png' rel='shortcut icon'>
+<link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/style.css' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/syntax.css' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/responsive.css' rel='stylesheet' type='text/css' />
+<!-- - -->
+<script src='http://localhost:4000/javascripts/jquery.js' type='text/javascript'></script>
+<script src='http://localhost:4000/javascripts/pd.js' type='text/javascript'></script>
+<script src='http://localhost:4000/javascripts/basics.js' type='text/javascript'></script>
+<!--<script type="text/javascript" src="https://www.google.com/jsapi"></script>-->
+<!-- - -->
+<meta content='width=device-width, initial-scale=1.0, user-scalable=no' name='viewport'>
+<meta content='text/html; charset=utf-8' http-equiv='content-type' />
+<meta content="http://localhost:4000/og.png" property="og:image" />
+<meta content="" property="fb:app_id" />
+
+  <meta content='http://localhost:4000/2016/12/27/iconrad-project-2/' property='og:url' />
+  <meta content="IntroductionThis post will cover the steps necessary to setup and configure Spacewalk in order to use it in conjuncti..." property='og:description' />
+  <meta content="article" property="og:type" />
+
+<!-- - -->
+<!--<script type='text/javascript'>
+  //<![CDATA[
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', '']);
+    _gaq.push(['_trackPageview']);
+    
+    (function() {
+      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+  //]]>
+</script>-->
+<script>(function(d, s, id) {
+  var js, fjs = d.getElementsByTagName(s)[0];
+  if (d.getElementById(id)) return;
+  js = d.createElement(s); js.id = id;
+  js.src = "//connect.facebook.net/en_GB/all.js#xfbml=1&appId=";
+  fjs.parentNode.insertBefore(js, fjs);
+}(document, 'script', 'facebook-jssdk'));</script>
+
+  </head>
+  <body>
+    <header>
+<a id="go-back-home" href="http://localhost:4000"><img src="http://localhost:4000/images/shebang.svg" alt="#!" width="53" height="59"></a>
+<p>tminor.io</p>
+</header>
+
+    <div id='container'>
+      <div class="block">
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/about">
+       About
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000https://blog.tminor.io">
+       Blog
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/feed.xml">
+       RSS
+     </a>
+  
+</div>
+      <section class="paging">
+  
+    <div class="left">
+      <a href="/2016/12/21/iconrad-project/">
+        ‹
+      </a>
+    </div>
+  
+  
+    <div class="right">
+      <a href="/2017/01/01/iconrad-3-project/">
+        ›
+      </a>
+    </div>
+  
+</section>
+      <div class="content">
+        <section class='post'>
+          <h1 class="upcase">
+            <div class='date'>27 Dec 2016</div>
+            Installing Spacewalk and KVM VMs.
+          </h1>
+          <h3>Introduction</h3>
+
+<p>This post will cover the steps necessary to setup and configure Spacewalk in order to use it in conjunction with <code>libvirt</code> for hands-off installations. I&rsquo;ll also attempt to explain how to import errata in an automated fashion (by shamelessly using someone else&rsquo;s script).</p>
+
+<hr>
+
+<h3>Install Spacewalk</h3>
+
+<p>Set up the local Spacewalk repo:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ rpm -Uvh http://yum.spacewalkproject.org/2.6/RHEL/7/x86_64/spacewalk-repo-2.6-0.el7.noarch.rpm
+</code></pre></div>
+<p>Ensure additional dependencies for <code>jpackage</code> are present:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ su
+$ cat &gt; /etc/yum.repos.d/jpackage-generic.repo &lt;&lt; EOF
+   [jpackage-generic]
+   name=JPackage generic
+   #baseurl=http://mirrors.dotsrc.org/pub/jpackage/5.0/generic/free/
+   mirrorlist=http://www.jpackage.org/mirrorlist.php?dist=generic&amp;type=free&amp;release=5.0
+   enabled=1
+   gpgcheck=1
+   gpgkey=http://www.jpackage.org/jpackage.asc
+   EOF
+</code></pre></div>
+<p>Spacewalk requires a Java Virtual Machine with version 1.6.0 or greater. Install the following RPM that contains a version of <code>openjdk</code> that works with Spacewalk:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-&lt;version&gt;
+</code></pre></div>
+<p>Spacewalk is also dependent upon a backend database; we&rsquo;ll install PostgreSQL:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ yum install spacewalk-postgresql spacewalk-setup-postgresql
+</code></pre></div>
+<p>Follow any prompts during the installation process. If the setup asks for an FQDN, be sure to use the one that is intended for future use. </p>
+
+<p>Configure <code>iptables</code> to allow traffic for Spacewalk:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ iptables -A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+$ iptables -A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
+</code></pre></div>
+<p>Next, install the scipt for automatic errata importation. This won&rsquo;t be immediately useful; once machines are registered with Spacewalk, Spacewalk will inventory all installed packages and draw in all applicable CVEs for those packages so that patching for vulnerabilities can be done in a timely manner. Set up the <code>~/spacewalk</code> directory and download the script:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ mkdir ~/spacewalk
+$ wget https://cefs.steve-meier.de/errata-import.tar
+$ tar -xf errata-import.tar
+$ chmod 700 errata-import.pl
+</code></pre></div>
+<p>Test the script to make sure that it works properly. Next, open a file for a cron job script that will be used to download and publish the errata on a weekly basis:</p>
+
+<figure class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="c">#! /bin/bash</span>
+
+<span class="nb">export </span><span class="nv">SPACEWALK_USER</span><span class="o">=</span><span class="nv">$USER</span>
+<span class="nb">export </span><span class="nv">SPACEWALK_PASS</span><span class="o">=</span><span class="nv">$PASSWORD</span>
+
+<span class="nb">cd</span> /home/tminor/spacewalk
+rm errata.latest.xml
+wget https://cefs.steve-meier.de/errata.latest.xml
+./errata-import.pl --server example.com --errata errata.latest.xml --publish
+
+<span class="nb">export </span><span class="nv">SPACEWALK_USER</span><span class="o">=</span>nothing
+<span class="nb">export </span><span class="nv">SPACEWALK_PASS</span><span class="o">=</span>nothing</code></pre></figure>
+
+<p>The above script does not take a secure approach to storing credentials. You may want to read <a href="http://unix.stackexchange.com/questions/212329/hiding-password-in-shell-scripts">the answers in this Stack Exchange thread</a> for a better understanding and breakdown of security risks and best practices. Make sure that the script is read-only and owned by root:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ chmod 700 errata-cron.sh
+</code></pre></div>
+<p>Open <code>root</code>&lsquo;s crontab:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo crontab -e
+</code></pre></div>
+<p>Add the following line to the file and save it:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">0 0 * * 1 /tminor/home/spacewalk/errata-cron.sh
+</code></pre></div>
+<hr>
+
+<h3>Setting up Spacewalk with a kickstartable distribution</h3>
+
+<p>Before Spacewalk can accomodate kickstarting VMs, it needs to be made aware of any distributions that will be used for VM deployments. The first image that I used was a minimal CentOS 6 installation; choose any source from <a href="http://isoredirect.centos.org/centos/7/isos/x86_64/CentOS-7-x86_64-Minimal-1611.iso">here</a> and download an ISO and then mount it.</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ wget &lt;link&gt;
+$ sudo mkdir /var/distro-trees/CentOS-6.8min
+$ sudo mount -oloop /var/iso-images/CentOS-6.8-x86_64-minimal.iso /var/distro-trees/CentOS-6.8min/
+</code></pre></div>
+<p>It&rsquo;s also useful to include an entry in <code>/etc/fstab</code> so that this mount persists across reboots. Open it with an editor and add:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text"># &lt;device&gt;                                            &lt;dir&gt;                                   &lt;type&gt;  &lt;options&gt;                       &lt;dump&gt;  &lt;fsck&gt;
+/var/iso-images/CentOS-6.8-x86_64-minimal.iso         /var/distro-trees/CentOS-6.8min/        iso9660 user,auto,loop                  0       0
+</code></pre></div>
+<p>At this point Spacewalk requires attention via its web interface. Navigate to it via the host&rsquo;s FQDN or IP address. Once there find, the &ldquo;Channels&rdquo; tab, click &ldquo;Manage Software Channels&rdquo; and click <strong>&ldquo;+ Create Channel&rdquo;</strong>; see the screenshot below:</p>
+
+<p><img src="http://localhost:4000/images/spacewalk/step1.png" alt="Spacewalk Step 1"></p>
+
+<p>Populate the new channel with packages using <code>rhnpush</code>:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">rhnpush --server &lt;servername&gt; -u &lt;user&gt; -p &lt;password&gt; --channel centos-6 /var/distro-trees/CenOS-6.8min/Packages/*.rpm
+</code></pre></div>
+<p>Next, find the control panel below and click <strong>&ldquo;+ Create Distribution&rdquo;</strong>:</p>
+
+<p><img src="http://localhost:4000/images/spacewalk/step2.png" alt="Spacewalk Step 2"></p>
+
+<p>Complete the required fields as seen below:</p>
+
+<p><img src="http://localhost:4000/images/spacewalk/step3.png" alt="Spacewalk Step 2.5"></p>
+
+<p>Click <strong>&ldquo;+ Create Kickstart Distribution&rdquo;</strong> to generate the kickstart ditribution. Next, create the kickstart profile. Navigate to the menu below:</p>
+
+<p><img src="http://localhost:4000/images/spacewalk/step5.png" alt="Spacewalk Step 3"></p>
+
+<p>Fill out the fields as seen below. Disregard any options not pictured in the screenshot:</p>
+
+<p><img src="http://localhost:4000/images/spacewalk/step4.png" alt="Spacewalk Step 3.5"></p>
+
+<p>The resources specified are largely irrelevant; CPU, memory, and disk space will all be specified through a shell cript that utilizes <code>virsh</code> to provision necessary resources. With the kickstart profile created, VMs can now be created as necessary. </p>
+
+<p>Next, create a simple <code>virsh</code> script:</p>
+
+<figure class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="c">#! /bin/bash</span>
+
+virt-install <span class="se">\</span>
+        --connect qemu:///system <span class="se">\</span>
+        --name<span class="o">=</span>&lt;name&gt; <span class="se">\</span>
+        --ram<span class="o">=</span><span class="m">1024</span> <span class="se">\</span>
+        --vcpus<span class="o">=</span><span class="m">1</span> <span class="se">\</span>
+        --location /var/distro-trees/CentOS-6.8min/ <span class="se">\</span>
+        --disk <span class="nv">path</span><span class="o">=</span>/home/tminor/homelab/&lt;name&gt;.img <span class="se">\</span>
+        --network<span class="o">=</span>network:labnet <span class="se">\</span>
+        --extra-args<span class="o">=</span><span class="s2">&quot;ks=http://example.com/cblr/svc/op/ks/profile/CentOS-6-Minimal:1:HomeLabInc serial console=tty0 console=ttyS0,115200 ip=dhcp&quot;</span> <span class="se">\</span>
+        --nographics</code></pre></figure>
+
+<p>The script will very likely require quite a bit of tinkering before it will work properly. I found it difficult to figure out the kickstart URL, but it should be something similar to the one seen above. The above script also utilizes DHCP, so if necessary, assign a static IP until it&rsquo;s possible to assign IP addresses dynamically via DHCP. The network portion should be the KVM virtual network created earlier.</p>
+
+<p>Once the script is run, you should be left with a fresh installation. The root password should have been set up during the process of creating the kickstart distribution, so I&rsquo;d recommend setting up a non-root administrative user first.</p>
+
+<hr>
+
+<h3>Conclusion</h3>
+
+<p>After all is said and done, the directions above should have resulted in an installation of Spacewalk that provides a kickstart profile capable of spinning up a very basic CentOS 6 VM. In the next post, I&rsquo;ll demonstrate how to turn our first VM into a name server with BIND DNS and DHCP.</p>
+
+          <!--
+<br />
+<p>
+  Until next time,<br/>
+  Thomas
+  <span class="muted">at 02:32</span>
+</p>
+<p>
+  <img src="/images/blog.svg" alt="./blog.sh" width="70" height="40" /> 
+</p>
+-->
+
+
+        </section>
+      </div>
+      
+
+      
+        <div class="block">
+  <div id="disqus_thread"></div>
+    <script>
+      /**
+      *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+      *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+      */
+      /*
+      var disqus_config = function () {
+        this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+      };
+      */
+      (function() {  // DON'T EDIT BELOW THIS LINE
+        var d = document, s = d.createElement('script');
+
+        s.src = '//blog-tminor-io.disqus.com/embed.js';
+
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+      })();
+    </script>
+  <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+</div>
+
+      
+      <div class="block">
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/about">
+       About
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000https://blog.tminor.io">
+       Blog
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/feed.xml">
+       RSS
+     </a>
+  
+</div>
+    </div>
+    <!--
+<footer>
+  <a href="http://github.com/muan/scribble" class="muted">built with Jekyll using Scribble theme</a>
+  <br />
+  <br />
+  <img src="http://localhost:4000/images/eof.svg" alt="./blog.sh" width="40" height="27"/> 
+</footer>
+-->
+
+  </body>
+</html>

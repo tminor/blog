@@ -1,0 +1,198 @@
+<h3 id="iconrads-sysadmin-project">iConrad’s Sysadmin Project</h3>
+
+<p>Over the last several months, I’ve been chipping away at a monumental project. You can find it <a href="https://www.reddit.com/r/linuxadmin/comments/2s924h/how_did_you_get_your_start/cnnw1ma/">here</a>. I’ve made it through step four, but I’ll start my write-ups with step one, trying my best to reconstruct the lessons learned and the actions taken at the time I actually did them.</p>
+
+<p>In this post, I’ll go over step 1: “Set up a KVM hypervisor.” This innocuous looking set of instructions turns out to be very involved, so let’s get started.</p>
+
+<hr />
+
+<h3 id="install-kvm">Install KVM</h3>
+
+<p>First up, install all of the packages necessary for KVM:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ yum install kvm qemu-kvm python-virtinst libvirt libvirt-python \
+    libguestfs-tools virt-install
+</code></pre>
+</div>
+
+<p>Enable <code class="highlighter-rouge">libvirtd</code> and start it:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ systemctl enable libvirtd &amp;&amp; systemctl start libvirtd
+</code></pre>
+</div>
+
+<p><code class="highlighter-rouge">libvirtd</code> enables the starting and stopping of VMs as well as interaction with <code class="highlighter-rouge">libvirt</code>’s API.</p>
+
+<hr />
+
+<h3 id="virtual-networking-with-open-vswitch">Virtual networking with Open vSwitch</h3>
+
+<p>KVM relies on the kernel for packet forwarding; check to see if it’s enabled:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sudo cat /proc/sys/net/ipv4/ip_forward
+</code></pre>
+</div>
+
+<p>If it’s not (returns 0), enable it:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ sysctl -w net.ipv4.ip_forward=1
+</code></pre>
+</div>
+
+<p>At this point, KVM needs some sort of virtual network device capable of bridging our virtual and physical interfaces. Standard KVM installations advise the use of a Linux bridge device; while there’s certainly nothing wrong with using this method, there are alternatives such as Open vSwitch. OVS is the virtual networking device of choice for OpenStack. It’s generally touted as conducive to a highly dynamic environment. It also supports features such as GRE tunneling, whereas a Linux bridge does not (<a href="http://blog.asiantuntijakaveri.fi/2012/01/layer-2-over-layer-3-using-linux-built.html">although this appears to be maybe untrue</a>).</p>
+
+<p>Install all of the necessary packages (several of these are probably already installed):</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ yum install make gcc openssl-devel autoconf automake \
+        rpm-build redhat-rpm-config python-devel openssl-devel \
+        kernel-devel kernel-debug-devel libtool wget
+</code></pre>
+</div>
+
+<p>Create the RPM for Open vSwitch:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ mkdir -p ~/rpmbuild/SOURCES
+$ wget http://openvswitch.org/releases/openvswitch-&lt;version&gt;.tar.gz
+$ cp openvswitch-&lt;version&gt;.tar.gz ~/rpmbuild/SOURCES/
+$ tar xfz openvswitch-&lt;version&gt;.tar.gz
+$ sed ’s/openvswitch-kmod, //g’ \
+        openvswitch-&lt;version&gt;/rhel/openvswitch.spec \
+        &gt; openvswitch-&lt;version&gt;/rhel/openvswitch_no_kmod.spec
+</code></pre>
+</div>
+
+<p>Build and install the RPM:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ rpmbuild -bb --nocheck \
+        ~/openvswitch-&lt;version&gt;/rhel/openvswitch_no_kmod.spec
+$ ls -l ~/rpmbuild/RPMS/x86_64/
+$ yum localinstall \
+        ~/rpmbuild/RPMS/x86_64/openvswitch-&lt;version&gt;.x86_64.rpm
+</code></pre>
+</div>
+
+<p>Start and enable OVS:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ systemctl start openvswitch &amp;&amp; systemctl enable openvswitch
+</code></pre>
+</div>
+
+<h3 id="open-vswitch-configuration">Open vSwitch Configuration</h3>
+
+<p>Usually, OVS is configured via its CLI config tool, <code class="highlighter-rouge">ovs-vsctl</code>. In this section, I won’t use it. Instead, the network service should take care of device creation. This is done via interface configuration files found in <code class="highlighter-rouge">/etc/sysconfig/network-scripts/ifcfg-&lt;device&gt;</code>. First, define the bridging device, in this case <code class="highlighter-rouge">ifcfg-ovsbr</code>:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>DEVICE=ovsbr
+ONBOOT=yes
+DEVICETYPE=ovs
+TYPE=OVSBridge
+BOOTPROTO=static
+IPADDR=192.168.1.200
+NETMASK=255.255.255.0
+HOTPLUG=no
+GATEWAY=192.168.1.1
+</code></pre>
+</div>
+
+<p>Next, the physical interface (Ethernet) needs to be connected to the new virtual bridge. <strong>Be aware:</strong> if you mess something up in this step and you are connected via SSH, you could get disconnected. With services like DigitalOcean, this shouldn’t be a problem as console access is provided via the web interface. Open the file that corresponds to the physical interface; in many cases, this is <code class="highlighter-rouge">ifcfg-eth0</code>:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>DEVICETYPE=ovs
+TYPE=OVSPort
+OVS_BRIDGE=ovsbr
+# TYPE=Ethernet
+# BOOTPROTO=none
+DEFROUTE=yes
+PEERDNS=yes
+PEERROUTES=yes
+IPV4_FAILURE_FATAL=no
+IPV6INIT=yes
+IPV6_AUTOCONF=yes
+IPV6_DEFROUTE=yes
+IPV6_PEERDNS=yes
+IPV6_PEERROUTES=yes
+IPV6_FAILURE_FATAL=no
+NAME=em1
+UUID=8a9afa2f-9bd5-40b1-9193-3f1af48d67be
+DEVICE=em1
+ONBOOT=yes
+NM_CONTROLLED=no
+</code></pre>
+</div>
+
+<p>It may be beneficial to comment out any lines that are improperly configured; in the case of something getting borked, you only need to uncomment to revert back to the previous configuration. In order to accomodate VLANs, OVS uses internal ports that function as “fake bridges.” Create a new interface configuration file for the VLAN device:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>DEVICE=vlan100
+ONBOOT=yes
+DEVICETYPE=ovs
+TYPE=OVSIntPort
+BOOTPROTO=static
+IPADDR=192.168.100.1
+NETMASK=255.255.255.0
+OVS_BRIDGE=vlan100
+</code></pre>
+</div>
+
+<p>The parameters are pretty straightforward. Restart the network service to automatically create all devices:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ systemctl network.service restart
+</code></pre>
+</div>
+
+<p>When the network service restarts, it will read the above configuration files and create all of the necessary OVS devices. Check the status of OVS:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ ovs-vsctl show
+</code></pre>
+</div>
+
+<p>The output should be similar to the following:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>083dc7a9-43ca-4a95-b601-3c088ae7945a
+    Bridge ovsbr
+        Port ovsbr
+            Interface ovsbr
+                type: internal
+        Port "vnet1"
+            tag: 100
+            Interface "vnet1"
+        Port "vlan100"
+            tag: 100
+            Interface "vlan100"
+                type: internal
+</code></pre>
+</div>
+
+<p>Whenever a VM is added to <code class="highlighter-rouge">ovsbr</code>, a new port should be added similar to <code class="highlighter-rouge">vnet1</code> above.</p>
+
+<hr />
+
+<h3 id="set-up-kvms-virtual-network">Set up KVM’s virtual network</h3>
+
+<p>With the help of <code class="highlighter-rouge">libvirt</code>, configuration for VMs (domains in <code class="highlighter-rouge">libvirt</code> parlance) and virtual networks can be managed through XML files. Create an XML file for the virtual network:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>&lt;network&gt;
+  &lt;name&gt;$NAME&lt;/name&gt;
+  &lt;forward mode='bridge'/&gt;
+  &lt;bridge name='vlan100'/&gt;
+&lt;/network&gt;
+</code></pre>
+</div>
+
+<p>You can store this file wherever you like. I keep all XML files and domain images in a specific directory. KVM needs to be made aware of this network definition. Use <code class="highlighter-rouge">virsh</code> to define a new network:</p>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>$ virsh net-define network.xml
+</code></pre>
+</div>
+
+<p>KVM should now be ready for the installation of VMs.</p>
+
+<hr />
+
+<h3 id="conclusion">Conclusion</h3>
+
+<p>After following the above steps, you should have the following:</p>
+
+<ol>
+  <li>A KVM hypervisor managed with <code class="highlighter-rouge">libvirt</code>.</li>
+  <li>An open vSwitch virtual bridge with a VLAN interface</li>
+</ol>
+
+<p>Before installing the first VM, I’ll walk through the steps to setup a Spacewalk server. Spacewalk enables systems management through a nice graphical web interface and also provides premade Kickstart scripts that will be used to automate the install process.</p>

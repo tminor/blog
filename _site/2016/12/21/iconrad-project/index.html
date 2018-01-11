@@ -1,0 +1,325 @@
+<html>
+  <head>
+    <meta content='Installing KVM and Open vSwitch. - tminor.io' property='og:title' />
+    <title>Installing KVM and Open vSwitch. - tminor.io</title>
+    <link href='http://localhost:4000/images/fav.png' rel='shortcut icon'>
+<link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/style.css' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/syntax.css' rel='stylesheet' type='text/css' />
+<link href='http://localhost:4000/stylesheets/responsive.css' rel='stylesheet' type='text/css' />
+<!-- - -->
+<script src='http://localhost:4000/javascripts/jquery.js' type='text/javascript'></script>
+<script src='http://localhost:4000/javascripts/pd.js' type='text/javascript'></script>
+<script src='http://localhost:4000/javascripts/basics.js' type='text/javascript'></script>
+<!--<script type="text/javascript" src="https://www.google.com/jsapi"></script>-->
+<!-- - -->
+<meta content='width=device-width, initial-scale=1.0, user-scalable=no' name='viewport'>
+<meta content='text/html; charset=utf-8' http-equiv='content-type' />
+<meta content="http://localhost:4000/og.png" property="og:image" />
+<meta content="" property="fb:app_id" />
+
+  <meta content='http://localhost:4000/2016/12/21/iconrad-project/' property='og:url' />
+  <meta content="iConrad&rsquo;s Sysadmin ProjectOver the last several months, I&rsquo;ve been chipping away at a monumental project. ..." property='og:description' />
+  <meta content="article" property="og:type" />
+
+<!-- - -->
+<!--<script type='text/javascript'>
+  //<![CDATA[
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', '']);
+    _gaq.push(['_trackPageview']);
+    
+    (function() {
+      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+  //]]>
+</script>-->
+<script>(function(d, s, id) {
+  var js, fjs = d.getElementsByTagName(s)[0];
+  if (d.getElementById(id)) return;
+  js = d.createElement(s); js.id = id;
+  js.src = "//connect.facebook.net/en_GB/all.js#xfbml=1&appId=";
+  fjs.parentNode.insertBefore(js, fjs);
+}(document, 'script', 'facebook-jssdk'));</script>
+
+  </head>
+  <body>
+    <header>
+<a id="go-back-home" href="http://localhost:4000"><img src="http://localhost:4000/images/shebang.svg" alt="#!" width="53" height="59"></a>
+<p>tminor.io</p>
+</header>
+
+    <div id='container'>
+      <div class="block">
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/about">
+       About
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000https://blog.tminor.io">
+       Blog
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/feed.xml">
+       RSS
+     </a>
+  
+</div>
+      <section class="paging">
+  
+    <div class="left">
+      <a href="/2016/12/13/jekyll-blog-part3/">
+        ‹
+      </a>
+    </div>
+  
+  
+    <div class="right">
+      <a href="/2016/12/27/iconrad-project-2/">
+        ›
+      </a>
+    </div>
+  
+</section>
+      <div class="content">
+        <section class='post'>
+          <h1 class="upcase">
+            <div class='date'>21 Dec 2016</div>
+            Installing KVM and Open vSwitch.
+          </h1>
+          <h3>iConrad&rsquo;s Sysadmin Project</h3>
+
+<p>Over the last several months, I&rsquo;ve been chipping away at a monumental project. You can find it <a href="https://www.reddit.com/r/linuxadmin/comments/2s924h/how_did_you_get_your_start/cnnw1ma/">here</a>. I&rsquo;ve made it through step four, but I&rsquo;ll start my write-ups with step one, trying my best to reconstruct the lessons learned and the actions taken at the time I actually did them. </p>
+
+<p>In this post, I&rsquo;ll go over step 1: &ldquo;Set up a KVM hypervisor.&rdquo; This innocuous looking set of instructions turns out to be very involved, so let&rsquo;s get started. </p>
+
+<hr>
+
+<h3>Install KVM</h3>
+
+<p>First up, install all of the packages necessary for KVM:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ yum install kvm qemu-kvm python-virtinst libvirt libvirt-python \
+    libguestfs-tools virt-install
+</code></pre></div>
+<p>Enable <code>libvirtd</code> and start it:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ systemctl enable libvirtd &amp;&amp; systemctl start libvirtd
+</code></pre></div>
+<p><code>libvirtd</code> enables the starting and stopping of VMs as well as interaction with <code>libvirt</code>&lsquo;s API.</p>
+
+<hr>
+
+<h3>Virtual networking with Open vSwitch</h3>
+
+<p>KVM relies on the kernel for packet forwarding; check to see if it&rsquo;s enabled:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sudo cat /proc/sys/net/ipv4/ip_forward
+</code></pre></div>
+<p>If it&rsquo;s not (returns 0), enable it:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ sysctl -w net.ipv4.ip_forward=1
+</code></pre></div>
+<p>At this point, KVM needs some sort of virtual network device capable of bridging our virtual and physical interfaces. Standard KVM installations advise the use of a Linux bridge device; while there&rsquo;s certainly nothing wrong with using this method, there are alternatives such as Open vSwitch. OVS is the virtual networking device of choice for OpenStack. It&rsquo;s generally touted as conducive to a highly dynamic environment. It also supports features such as GRE tunneling, whereas a Linux bridge does not (<a href="http://blog.asiantuntijakaveri.fi/2012/01/layer-2-over-layer-3-using-linux-built.html">although this appears to be maybe untrue</a>).</p>
+
+<p>Install all of the necessary packages (several of these are probably already installed):</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ yum install make gcc openssl-devel autoconf automake \
+        rpm-build redhat-rpm-config python-devel openssl-devel \
+        kernel-devel kernel-debug-devel libtool wget
+</code></pre></div>
+<p>Create the RPM for Open vSwitch:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ mkdir -p ~/rpmbuild/SOURCES
+$ wget http://openvswitch.org/releases/openvswitch-&lt;version&gt;.tar.gz
+$ cp openvswitch-&lt;version&gt;.tar.gz ~/rpmbuild/SOURCES/
+$ tar xfz openvswitch-&lt;version&gt;.tar.gz
+$ sed ’s/openvswitch-kmod, //g’ \
+        openvswitch-&lt;version&gt;/rhel/openvswitch.spec \
+        &gt; openvswitch-&lt;version&gt;/rhel/openvswitch_no_kmod.spec
+</code></pre></div>
+<p>Build and install the RPM:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ rpmbuild -bb --nocheck \
+        ~/openvswitch-&lt;version&gt;/rhel/openvswitch_no_kmod.spec
+$ ls -l ~/rpmbuild/RPMS/x86_64/
+$ yum localinstall \
+        ~/rpmbuild/RPMS/x86_64/openvswitch-&lt;version&gt;.x86_64.rpm
+</code></pre></div>
+<p>Start and enable OVS:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ systemctl start openvswitch &amp;&amp; systemctl enable openvswitch
+</code></pre></div>
+<h3>Open vSwitch Configuration</h3>
+
+<p>Usually, OVS is configured via its CLI config tool, <code>ovs-vsctl</code>. In this section, I won&rsquo;t use it. Instead, the network service should take care of device creation. This is done via interface configuration files found in <code>/etc/sysconfig/network-scripts/ifcfg-&lt;device&gt;</code>. First, define the bridging device, in this case <code>ifcfg-ovsbr</code>:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">DEVICE=ovsbr
+ONBOOT=yes
+DEVICETYPE=ovs
+TYPE=OVSBridge
+BOOTPROTO=static
+IPADDR=192.168.1.200
+NETMASK=255.255.255.0
+HOTPLUG=no
+GATEWAY=192.168.1.1
+</code></pre></div>
+<p>Next, the physical interface (Ethernet) needs to be connected to the new virtual bridge. <strong>Be aware:</strong> if you mess something up in this step and you are connected via SSH, you could get disconnected. With services like DigitalOcean, this shouldn&rsquo;t be a problem as console access is provided via the web interface. Open the file that corresponds to the physical interface; in many cases, this is <code>ifcfg-eth0</code>:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">DEVICETYPE=ovs
+TYPE=OVSPort
+OVS_BRIDGE=ovsbr
+# TYPE=Ethernet
+# BOOTPROTO=none
+DEFROUTE=yes
+PEERDNS=yes
+PEERROUTES=yes
+IPV4_FAILURE_FATAL=no
+IPV6INIT=yes
+IPV6_AUTOCONF=yes
+IPV6_DEFROUTE=yes
+IPV6_PEERDNS=yes
+IPV6_PEERROUTES=yes
+IPV6_FAILURE_FATAL=no
+NAME=em1
+UUID=8a9afa2f-9bd5-40b1-9193-3f1af48d67be
+DEVICE=em1
+ONBOOT=yes
+NM_CONTROLLED=no
+</code></pre></div>
+<p>It may be beneficial to comment out any lines that are improperly configured; in the case of something getting borked, you only need to uncomment to revert back to the previous configuration. In order to accomodate VLANs, OVS uses internal ports that function as &ldquo;fake bridges.&rdquo; Create a new interface configuration file for the VLAN device:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">DEVICE=vlan100
+ONBOOT=yes
+DEVICETYPE=ovs
+TYPE=OVSIntPort
+BOOTPROTO=static
+IPADDR=192.168.100.1
+NETMASK=255.255.255.0
+OVS_BRIDGE=vlan100
+</code></pre></div>
+<p>The parameters are pretty straightforward. Restart the network service to automatically create all devices:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ systemctl network.service restart
+</code></pre></div>
+<p>When the network service restarts, it will read the above configuration files and create all of the necessary OVS devices. Check the status of OVS:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ ovs-vsctl show
+</code></pre></div>
+<p>The output should be similar to the following:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">083dc7a9-43ca-4a95-b601-3c088ae7945a
+    Bridge ovsbr
+        Port ovsbr
+            Interface ovsbr
+                type: internal
+        Port &quot;vnet1&quot;
+            tag: 100
+            Interface &quot;vnet1&quot;
+        Port &quot;vlan100&quot;
+            tag: 100
+            Interface &quot;vlan100&quot;
+                type: internal
+</code></pre></div>
+<p>Whenever a VM is added to <code>ovsbr</code>, a new port should be added similar to <code>vnet1</code> above.</p>
+
+<hr>
+
+<h3>Set up KVM&rsquo;s virtual network</h3>
+
+<p>With the help of <code>libvirt</code>, configuration for VMs (domains in <code>libvirt</code> parlance) and virtual networks can be managed through XML files. Create an XML file for the virtual network:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">&lt;network&gt;
+  &lt;name&gt;$NAME&lt;/name&gt;
+  &lt;forward mode=&#39;bridge&#39;/&gt;
+  &lt;bridge name=&#39;vlan100&#39;/&gt;
+&lt;/network&gt;
+</code></pre></div>
+<p>You can store this file wherever you like. I keep all XML files and domain images in a specific directory. KVM needs to be made aware of this network definition. Use <code>virsh</code> to define a new network:</p>
+<div class="highlight"><pre><code class="language-text" data-lang="text">$ virsh net-define network.xml
+</code></pre></div>
+<p>KVM should now be ready for the installation of VMs.</p>
+
+<hr>
+
+<h3>Conclusion</h3>
+
+<p>After following the above steps, you should have the following:</p>
+
+<ol>
+<li>A KVM hypervisor managed with <code>libvirt</code>.</li>
+<li>An open vSwitch virtual bridge with a VLAN interface</li>
+</ol>
+
+<p>Before installing the first VM, I&rsquo;ll walk through the steps to setup a Spacewalk server. Spacewalk enables systems management through a nice graphical web interface and also provides premade Kickstart scripts that will be used to automate the install process. </p>
+
+          <!--
+<br />
+<p>
+  Until next time,<br/>
+  Thomas
+  <span class="muted">at 06:43</span>
+</p>
+<p>
+  <img src="/images/blog.svg" alt="./blog.sh" width="70" height="40" /> 
+</p>
+-->
+
+
+        </section>
+      </div>
+      
+
+      
+        <div class="block">
+  <div id="disqus_thread"></div>
+    <script>
+      /**
+      *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+      *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+      */
+      /*
+      var disqus_config = function () {
+        this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+        this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+      };
+      */
+      (function() {  // DON'T EDIT BELOW THIS LINE
+        var d = document, s = d.createElement('script');
+
+        s.src = '//blog-tminor-io.disqus.com/embed.js';
+
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+      })();
+    </script>
+  <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+</div>
+
+      
+      <div class="block">
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/about">
+       About
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000https://blog.tminor.io">
+       Blog
+     </a>
+  
+    <a target="_top"
+       class="main" 
+       href="http://localhost:4000/feed.xml">
+       RSS
+     </a>
+  
+</div>
+    </div>
+    <!--
+<footer>
+  <a href="http://github.com/muan/scribble" class="muted">built with Jekyll using Scribble theme</a>
+  <br />
+  <br />
+  <img src="http://localhost:4000/images/eof.svg" alt="./blog.sh" width="40" height="27"/> 
+</footer>
+-->
+
+  </body>
+</html>

@@ -1,0 +1,15 @@
+#+TITLE: Dockerizing Jeckyll.
+#+LAYOUT: post
+#+TAGS: Docker Jeckyll
+#+DATE: 2017-04-24 18:01:34
+#+DISQUS: y
+
+* Ooo, so trendy!
+
+I started delving into the world of IT about a year and half or two years ago; part of that delve included regular listening to particular tech podcasts, and though I was
+mostly lost in the jargon at first, I began to pick up on fads and trends in the frequency of certain topics. One of those was Docker (and containers in general). I didn't have much of an understanding 
+for what Docker was at the time, but I did hear frequent comparisons between Docker and virtualization. As I've learned more, I've started to understand that there was frequently
+a false equivalence being perpetrated when discussing the two; any discussion would generally include such a question as "are containers the future?" Maybe the answer is yes,
+but I don't think I heard enough discussion regarding the utility of one versus the other&Mthat it may be more pragmatic in one instance to use a VM than to use a container,
+and vice versa
+ 
