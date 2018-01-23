@@ -1,30 +1,53 @@
-title:            tminor.io
-description:      # A simple blog from a simple mind.
-url:              # Site url, without a slash at the end.
-signoff:          Thomas
-disqus_shortname: blog-tminor-io.disqus.com
-# facebook_appid:   # appid for like button, remove from /_includes/share.html if unwanted.
-# google_analytics: # set tracking, remove from /javascripts/basic.js if unwanted.
+# Site Info
+title:              "tminor.io"
+description:        
+google_verify:      
+google_analytics:   
 
-links:
-  - name:         About
-    url:          /about
-  - name:         Blog
-    url:          https://blog.tminor.io
-  - name:         RSS
-    url:          /feed.xml
-highlighter:      pygments
-permalink:        pretty
-markdown:         redcarpet
-redcarpet:
-  extensions:
-    - smart
+# Author Info
+author_name:        "Thomas Minor" # Your name here
+author_email:       example@gmail.com # Your email here
+author_gravatar:    f11fa94386545a465dd50ff9416d976c # Your Gravatar md5 hash here for logo
+twitter_username:   # Your Twitter username here
+github_username:    tminor # Your GitHub username here
 
-# Serving
-detach:  false
-port:    4000
-host:    127.0.0.1
-baseurl: "" # does not include hostname
-show_dir_listing: false
+# Site Settings
+url:                https://blog.tminor.io # main url
+baseurl:            # for gh-pages
+feed:		    /feed.xml
+permalink:          /notes/:title.html # Post permalink
+timezone:           Etc/GMT+5 # https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+mathjax:            true  # enables support for mathjax - set to false to disable
 
-highlighter: pygments
+# Site Build
+highlighter:        rouge
+markdown:           kramdown
+kramdown:
+    input:          GFM
+sass:
+    style:          :compressed
+
+# Other Params
+include:            [ "robots.txt" ]
+exclude:            [ "LICENSE", "README.md", "CNAME", "vendor", "Gemfile" ]
+gems:
+  - jekyll-sitemap
+
+
+
+defaults:
+  -
+    scope:
+      path:         ""
+    values:
+      layout:       "null"
+  -
+    scope:
+      type:         "pages"
+    values:
+      layout:       "page"
+  -
+    scope:
+      type:         "posts"
+    values:
+      layout:       "post"

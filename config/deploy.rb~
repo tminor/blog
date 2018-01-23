@@ -13,6 +13,12 @@ set :user, "tminor"
 # the path to deploy to on your VPS
 set :deploy_to, "/var/www/blog.tminor.io/"
 
+ssh_options[:keys] = [
+    File.join(ENV["HOME"], ".ssh", "DigitalOcean")
+    ]
+
+ssh_options[:forward_agent] = true
+
 # the ip address of your VPS
 role :web, "104.236.52.182"
 

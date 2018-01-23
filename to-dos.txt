@@ -1,2 +1,0 @@
-change syntax highlighting
-make and change logos

@@ -1,0 +1,138 @@
+---
+date: 2018-01-20
+tags: 
+- Jekyll
+- org-mode
+author: tminor
+layout: post
+title: Blog improvements.
+excerpt: I've changed the theme and haven't posted in a while...
+categories: 
+- Blog
+- Emacs
+- Jekyll
+- org-mode
+---
+
+<div id="outline-container-sec-1" class="outline-2">
+<h2 id="sec-1">New year, new blog, new me</h2>
+<div class="outline-text-2" id="text-1">
+<p>
+My New Year's resolution™ is to blog more, be a better person, and fulfill all of my dreams.
+</p>
+
+<p>
+Okay, none of that is necessarily true, but I hope that I won't leave this blog-thing to rot like so many others.
+It's really sad to read a good/helpful blog post (you won't find any here) and find that the author stopped
+posting years ago. I'm sure they all have other things going on—like having a life—but for  some reason it makes me
+a special kind of sad&#x2026;
+</p>
+</div>
+</div>
+
+<div id="outline-container-sec-2" class="outline-2">
+<h2 id="sec-2">A new and improved:</h2>
+<div class="outline-text-2" id="text-2">
+</div><div id="outline-container-sec-2-1" class="outline-3">
+<h3 id="sec-2-1">Jekyll theme</h3>
+<div class="outline-text-3" id="text-2-1">
+<p>
+When I first created this blog, I used <a href="https://github.com/muan/scribble">this</a> theme but I was never particularly sold on it.
+I shopped around for <a href="http://themes.jekyllrc.org/">other themes</a> and found <a href="https://github.com/heiswayi/the-plain">this one</a>, which I changed to suit my tastes
+(and on which I'm fully sold).
+</p>
+</div>
+</div>
+
+<div id="outline-container-sec-2-2" class="outline-3">
+<h3 id="sec-2-2">Publishing method</h3>
+<div class="outline-text-3" id="text-2-2">
+<p>
+For the past several months I've attempted—several times—to permanently incorporate Emacs into my
+workflow. The prime mover behind these attempts has been a desire to use <code>org-mode</code> and all of the
+niceties that come with it: <code>org-capture</code>, <code>org-agenda</code>, and so forth.
+</p>
+
+<p>
+I think I can successfully say that I <i>use</i> Emacs now (which I intend to write about), and one of the neatest things I'm able to do
+now is publish blog posts with <code>org2jekyll</code> (you can find the GitHub project <a href="https://github.com/ardumont/org2jekyll">here</a>).
+</p>
+</div>
+</div>
+
+<div id="outline-container-sec-2-3" class="outline-3">
+<h3 id="sec-2-3">Home lab</h3>
+<div class="outline-text-3" id="text-2-3">
+<p>
+I moved into a new apartment back in August and it seemed like a great time to graduate to a small server rack.
+Originally I attempted to MacGyver together a <a href="https://wiki.eth0.nl/index.php/LackRack">lack rack</a> but it
+eventually disintegrated.
+</p>
+
+<p>
+In addition to cleaning everything up and making it look presentable, it seemed logical to also start over
+from scratch. Here's what I did:
+</p>
+
+<ol class="org-ol">
+<li><b>Hypervisor:</b> KVM → ESXi
+</li>
+<li><b>Networking/Firewall:</b> Open vSwitch → pfSense
+</li>
+<li><b>DHCP:</b> ISC DHCP → pfSense
+</li>
+<li><b>DNS:</b> BIND → FreeIPA
+</li>
+<li><b>Identity Management/LDAP:</b> OpenLDAP → FreeIPA
+</li>
+</ol>
+
+<p>
+I'll probably start it over again and do some research and planning this time. Considering that my
+evaluation period for ESXi has ended, I'll have to make a decision about whether to pay $200 dollars for
+VMware's <a href="https://www.vmug.com/Join//EVALExperience">EVALExperience</a> or try something else. 
+</p>
+
+
+<div class="figure">
+<p><img src="../images/rack.jpg" alt="rack.jpg" />
+</p>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-3" class="outline-2">
+<h2 id="sec-3">The future</h2>
+<div class="outline-text-2" id="text-3">
+<p>
+Going back and reading my old posts, there's a lot that I'd like to improve upon. It would probably
+be worth re-documenting my blogging process, mostly because I had to refer to it when installing a
+different theme and it wasn't as helpful as I'd like. I'd like to document all the moving parts 
+(Jekyll, Apache, and Capistrano) in greater detail as well since I didn't really do that either. 
+Of course there's the documentation for each project which could answer any question better than I ever could,
+but it's nice to have it all spelled out in detail as it applies to my use case.
+</p>
+
+<p>
+Apart from documenting blog things, I also plan on documenting my usage of Emacs. So to enumerate
+things to expect from this blog:
+</p>
+
+<ol class="org-ol">
+<li>Documentation of my use of Jekyll, Apache, and Capistrano to implement a blog.
+</li>
+<li>Writing about Emacs and maybe learning some Emacs Lisp.
+</li>
+<li>Documenting whatever I end up doing with my home lab.
+</li>
+</ol>
+
+<p>
+That list looks okay, but learning things just for the sake of the thing itself is often times very challenging.
+My home lab project has been incredibly broad in scope and doesn't <i>really</i> have much of an end game. I know
+opinions vary on the value of certifications, but it might function well as a source of guidance and have
+a little more than blog posts to show for it. I'm thinking maybe RHCSA or a VMware certification.
+</p>
+</div>
+</div>

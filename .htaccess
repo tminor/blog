@@ -1,5 +1,0 @@
-Header set Strict-Transport-Security "max-age=31415926; includeSubDomains
-RewriteEngine On
-RewriteBase /
-RewriteCond %{HTTP_HOST} !^blog\. [NC]
-RewriteRule ^(.*)$ https://blog.%{HTTP_HOST}/$1 [R=301,L]
